@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package pane;
+
+option go_package = "github.com/windmilleng/tilt/internal/pane/proto;proto";
+
+service Pane {
+  rpc Connect (ConnectRequest) returns (stream ConnectReply) {}
+}
+
+message ConnectRequest {
+  string fd_socket_path = 1;
+}
+
+message ConnectReply {
+}

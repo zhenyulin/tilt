@@ -6,12 +6,13 @@
 package cli
 
 import (
-	context "context"
-	build "github.com/windmilleng/tilt/internal/build"
-	docker "github.com/windmilleng/tilt/internal/docker"
-	engine "github.com/windmilleng/tilt/internal/engine"
-	k8s "github.com/windmilleng/tilt/internal/k8s"
-	model "github.com/windmilleng/tilt/internal/model"
+	"context"
+	"github.com/windmilleng/tilt/internal/build"
+	"github.com/windmilleng/tilt/internal/docker"
+	"github.com/windmilleng/tilt/internal/engine"
+	"github.com/windmilleng/tilt/internal/k8s"
+	"github.com/windmilleng/tilt/internal/model"
+	"github.com/windmilleng/tilt/internal/pane/hud"
 )
 
 // Injectors from wire.go:
@@ -54,7 +55,11 @@ func wireManifestCreator(ctx context.Context, browser engine.BrowserMode) (model
 	fallbackTester := engine.DefaultShouldFallBack()
 	compositeBuildAndDeployer := engine.NewCompositeBuildAndDeployer(buildOrder, fallbackTester)
 	imageReaper := build.NewImageReaper(dockerCli)
-	upper := engine.NewUpper(ctx, compositeBuildAndDeployer, k8sClient, browser, imageReaper)
+	ttyPaneServer, err := hud.NewTTYPaneServer()
+	if err != nil {
+		return nil, err
+	}
+	upper := engine.NewUpper(ctx, compositeBuildAndDeployer, k8sClient, browser, imageReaper, ttyPaneServer)
 	return upper, nil
 }
 

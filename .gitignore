@@ -17,6 +17,9 @@
 
 # Text editor stuff
 .idea
+*~
+\#*\#
+.\#*
 
 # Generated yaml (from synclet deploy)
 *.generated.yaml

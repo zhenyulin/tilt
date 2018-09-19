@@ -12,6 +12,8 @@ import (
 	"github.com/windmilleng/tilt/internal/engine"
 	"github.com/windmilleng/tilt/internal/k8s"
 	"github.com/windmilleng/tilt/internal/model"
+	"github.com/windmilleng/tilt/internal/pane/hud"
+	"github.com/windmilleng/tilt/internal/state"
 )
 
 func wireManifestCreator(ctx context.Context, browser engine.BrowserMode) (model.ManifestCreator, error) {
@@ -31,6 +33,9 @@ func wireManifestCreator(ctx context.Context, browser engine.BrowserMode) (model
 
 		engine.DeployerWireSet,
 		engine.DefaultShouldFallBack,
+
+		hud.NewTTYPaneServer,
+		wire.Bind(new(state.StateWriter), new(hud.TTYPaneServer)),
 
 		engine.NewUpper,
 		wire.Bind(new(model.ManifestCreator), engine.Upper{}),

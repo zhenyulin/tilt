@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/url"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/windmilleng/tilt/internal/model"
 	"github.com/windmilleng/tilt/internal/ospath"
 	"github.com/windmilleng/tilt/internal/output"
+	"github.com/windmilleng/tilt/internal/state"
 	"github.com/windmilleng/tilt/internal/summary"
 	"github.com/windmilleng/tilt/internal/watch"
 )
@@ -44,12 +46,13 @@ type Upper struct {
 	k8s          k8s.Client
 	browserMode  BrowserMode
 	reaper       build.ImageReaper
+	stateWriter  state.StateWriter
 }
 
 type watcherMaker func() (watch.Notify, error)
 type timerMaker func(d time.Duration) <-chan time.Time
 
-func NewUpper(ctx context.Context, b BuildAndDeployer, k8s k8s.Client, browserMode BrowserMode, reaper build.ImageReaper) Upper {
+func NewUpper(ctx context.Context, b BuildAndDeployer, k8s k8s.Client, browserMode BrowserMode, reaper build.ImageReaper, sw state.StateWriter) Upper {
 	watcherMaker := func() (watch.Notify, error) {
 		return watch.NewWatcher()
 	}
@@ -60,6 +63,7 @@ func NewUpper(ctx context.Context, b BuildAndDeployer, k8s k8s.Client, browserMo
 		k8s:          k8s,
 		browserMode:  browserMode,
 		reaper:       reaper,
+		stateWriter:  sw,
 	}
 }
 
@@ -112,6 +116,7 @@ func (u Upper) CreateManifests(ctx context.Context, manifests []model.Manifest, 
 
 	logger.Get(ctx).Debugf("[timing.py] finished initial build") // hook for timing.py
 
+	u.writeState(ctx, manifests)
 	output.Get(ctx).Summary(s.Output(ctx, u.resolveLB))
 
 	if watchMounts {
@@ -157,6 +162,7 @@ func (u Upper) CreateManifests(ctx context.Context, manifests []model.Manifest, 
 				}
 				logger.Get(ctx).Debugf("[timing.py] finished build from file change") // hook for timing.py
 
+				u.writeState(ctx, manifests)
 				output.Get(ctx).Summary(s.Output(ctx, u.resolveLB))
 				output.Get(ctx).Printf("Awaiting changes…")
 
@@ -171,6 +177,15 @@ func (u Upper) CreateManifests(ctx context.Context, manifests []model.Manifest, 
 func (u Upper) resolveLB(ctx context.Context, spec k8s.LoadBalancerSpec) *url.URL {
 	lb, _ := u.k8s.ResolveLoadBalancer(ctx, spec)
 	return lb.URL
+}
+
+func (u Upper) writeState(ctx context.Context, manifests []model.Manifest) {
+	var res []state.Resource
+	for _, m := range manifests {
+		res = append(res, state.Resource{Name: string(m.Name)})
+	}
+	log.Printf("huh %v %T %v", u.stateWriter, u.stateWriter, res)
+	u.stateWriter.WriteState(ctx, state.Resources{Resources: res})
 }
 
 func (u Upper) logBuildEvent(ctx context.Context, manifest model.Manifest, buildState BuildState) {
