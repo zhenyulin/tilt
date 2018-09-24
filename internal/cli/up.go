@@ -86,23 +86,25 @@ func (c *upCmd) run(args []string) error {
 
 	logOutput(fmt.Sprintf("Starting Tilt (built %s)…\n", buildDateStamp()))
 
-	tf, err := tiltfile.Load(tiltfile.FileName, os.Stdout)
-	if err != nil {
-		return err
-	}
+	logOutput(fmt.Sprintf("welp %v", tiltfile.FileName))
 
-	manifestName := args[0]
-	manifests, err := tf.GetManifestConfigs(manifestName)
-	if err != nil {
-		return err
-	}
+	// tf, err := tiltfile.Load(tiltfile.FileName, os.Stdout)
+	// if err != nil {
+	// 	return err
+	// }
+
+	// manifestName := args[0]
+	// manifests, err := tf.GetManifestConfigs(manifestName)
+	// if err != nil {
+	// 	return err
+	// }
 
 	manifestCreator, err := wireManifestCreator(ctx, c.browserMode)
 	if err != nil {
 		return err
 	}
 
-	err = manifestCreator.CreateManifests(ctx, manifests, c.watch)
+	err = manifestCreator.Watch(ctx)
 	s, ok := status.FromError(err)
 	if ok && s.Code() == codes.Unknown {
 		return errors.New(s.Message())

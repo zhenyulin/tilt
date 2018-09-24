@@ -67,6 +67,18 @@ func NewUpper(ctx context.Context, b BuildAndDeployer, k8s k8s.Client, browserMo
 	}
 }
 
+func (u Upper) Watch(ctx context.Context) error {
+	// start kubernetes watch
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+			// new kubeinfo
+
+		}
+	}
+}
+
 func (u Upper) CreateManifests(ctx context.Context, manifests []model.Manifest, watchMounts bool) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "daemon-Up")
 	defer span.Finish()

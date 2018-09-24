@@ -52,6 +52,7 @@ func (m Manifest) validate() *ValidateErr {
 }
 
 type ManifestCreator interface {
+	Watch(ctx context.Context) error
 	CreateManifests(ctx context.Context, svcs []Manifest, watch bool) error
 }
 
