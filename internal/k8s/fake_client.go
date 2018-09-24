@@ -60,3 +60,7 @@ func (c *FakeK8sClient) GetNodeForPod(ctx context.Context, podID PodID) (NodeID,
 func (c *FakeK8sClient) ForwardPort(ctx context.Context, namespace string, podID PodID, remotePort int) (int, func(), error) {
 	return 0, nil, nil
 }
+
+func (c *FakeK8sClient) Watch(ctx context.Context, namespace string) (chan InformEvent, error) {
+	return nil, fmt.Errorf("FakeK8sClient.Watch not implemented")
+}

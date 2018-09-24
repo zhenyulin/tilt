@@ -59,7 +59,7 @@ type Client interface {
 	// Opens a tunnel to the specified pod+port. Returns the tunnel's local port and a function that closes the tunnel
 	ForwardPort(ctx context.Context, namespace string, podID PodID, remotePort int) (localPort int, closer func(), err error)
 
-	Watch(ctx context.Context, resource string) (chan interface{}, error)
+	Watch(ctx context.Context, resource string) (chan InformEvent, error)
 }
 
 type K8sClient struct {
