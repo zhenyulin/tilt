@@ -20,6 +20,7 @@ import (
 
 type upCmd struct {
 	watch       bool
+	hud         bool
 	browserMode engine.BrowserMode
 	traceTags   string
 }
@@ -32,6 +33,7 @@ func (c *upCmd) register() *cobra.Command {
 	}
 
 	cmd.Flags().BoolVar(&c.watch, "watch", false, "any started manifests will be automatically rebuilt and redeployed when files in their repos change")
+	cmd.Flags().BoolVar(&c.hud, "hud", false, "hud mode")
 	cmd.Flags().Var(&c.browserMode, "browser", "open a browser when the manifest first starts")
 	cmd.Flags().StringVar(&c.traceTags, "traceTags", "", "tags to add to spans for easy querying, of the form: key1=val1,key2=val2")
 
@@ -55,23 +57,27 @@ func (c *upCmd) run(ctx context.Context, args []string) error {
 
 	logOutput(fmt.Sprintf("welp %v", tiltfile.FileName))
 
-	// tf, err := tiltfile.Load(tiltfile.FileName, os.Stdout)
-	// if err != nil {
-	// 	return err
-	// }
-
-	// manifestName := args[0]
-	// manifests, err := tf.GetManifestConfigs(manifestName)
-	// if err != nil {
-	// 	return err
-	// }
-
 	manifestCreator, err := wireManifestCreator(ctx, c.browserMode)
 	if err != nil {
 		return err
 	}
 
-	err = manifestCreator.Watch(ctx)
+	if c.hud {
+		err = manifestCreator.Watch(ctx)
+	} else {
+		tf, err := tiltfile.Load(tiltfile.FileName, os.Stdout)
+		if err != nil {
+			return err
+		}
+
+		manifestName := args[0]
+		manifests, err := tf.GetManifestConfigs(manifestName)
+		if err != nil {
+			return err
+		}
+
+		err = manifestCreator.CreateManifests(ctx, manifests, c.watch)
+	}
 	s, ok := status.FromError(err)
 	if ok && s.Code() == codes.Unknown {
 		return errors.New(s.Message())

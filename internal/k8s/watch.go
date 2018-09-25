@@ -31,7 +31,7 @@ func (UpdateInformEvent) informEvent() {}
 func (DeleteInformEvent) informEvent() {}
 
 func (k K8sClient) Watch(ctx context.Context, namespace string) (chan InformEvent, error) {
-	lw := cache.NewListWatchFromClient(k.core.RESTClient(), "deployments", namespace, fields.Everything())
+	lw := cache.NewListWatchFromClient(k.core.RESTClient(), "replicasets", namespace, fields.Everything())
 
 	ch := make(chan InformEvent)
 	_, controller := cache.NewInformer(

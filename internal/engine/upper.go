@@ -18,6 +18,7 @@ import (
 	"github.com/windmilleng/tilt/internal/state"
 	"github.com/windmilleng/tilt/internal/summary"
 	"github.com/windmilleng/tilt/internal/watch"
+	"k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // When we see a file change, wait this long to see if any other files have changed, and bundle all changes together.
@@ -69,12 +70,17 @@ func NewUpper(ctx context.Context, b BuildAndDeployer, k8s k8s.Client, browserMo
 
 func (u Upper) Watch(ctx context.Context) error {
 	// start kubernetes watch
+	w, err := u.k8s.Watch(ctx, v1.NamespaceDefault)
+	if err != nil {
+		return err
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-			// new kubeinfo
-
+		// new kubeinfo
+		case ev := <-w:
+			log.Printf("Kube event!: %v", ev)
 		}
 	}
 }
