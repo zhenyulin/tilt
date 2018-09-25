@@ -8,33 +8,13 @@ import (
 	"github.com/docker/distribution/reference"
 	digest "github.com/opencontainers/go-digest"
 	"github.com/stretchr/testify/assert"
+	"github.com/windmilleng/tilt/internal/k8s/testyaml"
 
 	"k8s.io/api/core/v1"
 )
 
-func TestExtractSanchoYAML(t *testing.T) {
-	entities, err := ParseYAMLFromString(SanchoYAML)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(entities) != 1 {
-		t.Fatalf("Unexpected entities: %+v", entities)
-	}
-
-	entity := entities[0]
-	containers, err := extractContainers(&entity)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(containers) != 1 || containers[0].Image != "gcr.io/some-project-162817/sancho" {
-		t.Errorf("Unexpected containers: %v", containers)
-	}
-}
-
 func TestInjectDigestSanchoYAML(t *testing.T) {
-	entities, err := ParseYAMLFromString(SanchoYAML)
+	entities, err := ParseYAMLFromString(testyaml.SanchoYAML)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +46,7 @@ func TestInjectDigestSanchoYAML(t *testing.T) {
 }
 
 func TestInjectDigestDoesNotMutateOriginal(t *testing.T) {
-	entities, err := ParseYAMLFromString(SanchoYAML)
+	entities, err := ParseYAMLFromString(testyaml.SanchoYAML)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +78,7 @@ func TestInjectDigestDoesNotMutateOriginal(t *testing.T) {
 }
 
 func TestInjectImagePullPolicy(t *testing.T) {
-	entities, err := ParseYAMLFromString(BlorgBackendYAML)
+	entities, err := ParseYAMLFromString(testyaml.BlorgBackendYAML)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +109,7 @@ func TestInjectImagePullPolicy(t *testing.T) {
 }
 
 func TestInjectImagePullPolicyDoesNotMutateOriginal(t *testing.T) {
-	entities, err := ParseYAMLFromString(BlorgBackendYAML)
+	entities, err := ParseYAMLFromString(testyaml.BlorgBackendYAML)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +131,7 @@ func TestInjectImagePullPolicyDoesNotMutateOriginal(t *testing.T) {
 }
 
 func TestErrorInjectDigestBlorgBackendYAML(t *testing.T) {
-	entities, err := ParseYAMLFromString(BlorgBackendYAML)
+	entities, err := ParseYAMLFromString(testyaml.BlorgBackendYAML)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +150,7 @@ func TestErrorInjectDigestBlorgBackendYAML(t *testing.T) {
 }
 
 func TestInjectDigestBlorgBackendYAML(t *testing.T) {
-	entities, err := ParseYAMLFromString(BlorgBackendYAML)
+	entities, err := ParseYAMLFromString(testyaml.BlorgBackendYAML)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +206,7 @@ func InjectImageDigestWithStrings(entity K8sEntity, original string, newDigest s
 }
 
 func TestInjectSyncletImage(t *testing.T) {
-	entities, err := ParseYAMLFromString(SyncletYAML)
+	entities, err := ParseYAMLFromString(testyaml.SyncletYAML)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +219,7 @@ func TestInjectSyncletImage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	} else if !replaced {
-		t.Errorf("Expected replacement in:\n%s", SyncletYAML)
+		t.Errorf("Expected replacement in:\n%s", testyaml.SyncletYAML)
 	}
 
 	result, err := SerializeYAML([]K8sEntity{newEntity})

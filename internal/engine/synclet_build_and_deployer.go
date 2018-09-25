@@ -22,7 +22,7 @@ const podPollTimeoutSynclet = time.Second * 30
 var _ BuildAndDeployer = &SyncletBuildAndDeployer{}
 
 type SyncletBuildAndDeployer struct {
-	syncletClientManager SyncletClientManager
+	ssm SidecarSyncletManager
 
 	kCli k8s.Client
 
@@ -31,15 +31,16 @@ type SyncletBuildAndDeployer struct {
 }
 
 type DeployInfo struct {
+	podID       k8s.PodID
 	containerID k8s.ContainerID
 	nodeID      k8s.NodeID
 }
 
-func NewSyncletBuildAndDeployer(kCli k8s.Client, scm SyncletClientManager) *SyncletBuildAndDeployer {
+func NewSyncletBuildAndDeployer(kCli k8s.Client, ssm SidecarSyncletManager) *SyncletBuildAndDeployer {
 	return &SyncletBuildAndDeployer{
-		kCli:                 kCli,
-		deployInfo:           make(map[docker.ImgNameAndTag]DeployInfo),
-		syncletClientManager: scm,
+		kCli:       kCli,
+		deployInfo: make(map[docker.ImgNameAndTag]DeployInfo),
+		ssm:        ssm,
 	}
 }
 
@@ -137,7 +138,7 @@ func (sbd *SyncletBuildAndDeployer) updateViaSynclet(ctx context.Context,
 		return BuildResult{}, err
 	}
 
-	sCli, err := sbd.syncletClientManager.ClientForNode(ctx, deployInfo.nodeID)
+	sCli, err := sbd.ssm.ClientForPod(ctx, deployInfo.podID)
 	if err != nil {
 		return BuildResult{}, err
 	}
@@ -179,21 +180,19 @@ func (sbd *SyncletBuildAndDeployer) getDeployInfo(ctx context.Context, image ref
 	defer span.Finish()
 
 	// get pod running the image we just deployed
-	pID, err := sbd.kCli.PollForPodWithImage(ctx, image, podPollTimeoutSynclet)
+	pod, err := sbd.kCli.PollForPodWithImage(ctx, image, podPollTimeoutSynclet)
 	if err != nil {
 		return DeployInfo{}, errors.Wrapf(err, "PodWithImage (img = %s)", image)
 	}
 
-	nodeID, err := sbd.kCli.GetNodeForPod(ctx, pID)
-	if err != nil {
-		return DeployInfo{}, errors.Wrapf(err, "couldn't get node for pod '%s'", pID.String())
-	}
+	pID := k8s.PodIDFromPod(pod)
+	nodeID := k8s.NodeIDFromPod(pod)
 
 	// note: this is here both to get sCli for the call to getContainerForBuild below
 	// *and* to preemptively set up the tunnel + client
 	// (i.e., we'd still want to call this to set up the client even if we were throwing away
 	// sCli)
-	sCli, err := sbd.syncletClientManager.ClientForNode(ctx, nodeID)
+	sCli, err := sbd.ssm.ClientForPod(ctx, pID)
 	if err != nil {
 		return DeployInfo{}, errors.Wrapf(err, "error getting synclet client for node '%s'", nodeID)
 	}
@@ -206,5 +205,9 @@ func (sbd *SyncletBuildAndDeployer) getDeployInfo(ctx context.Context, image ref
 
 	logger.Get(ctx).Verbosef("talking to synclet client for node %s", nodeID.String())
 
-	return DeployInfo{cID, nodeID}, nil
+	return DeployInfo{
+		podID:       pID,
+		containerID: cID,
+		nodeID:      nodeID,
+	}, nil
 }

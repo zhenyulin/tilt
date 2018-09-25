@@ -2,6 +2,8 @@
 
 all: lint errcheck verify_gofmt wire-check test
 
+SYNCLET_IMAGE := gcr.io/windmill-public-containers/tilt-synclet
+
 proto:
 	docker build -t tilt-protogen -f Dockerfile.protogen .
 	docker rm tilt-protogen || exit 0
@@ -10,8 +12,19 @@ proto:
 	docker cp tilt-protogen:/go/src/github.com/windmilleng/tilt/internal/pane/proto/pane.pb.go internal/pane/proto
 	docker rm tilt-protogen
 
+# Build a binary that uses synclet:latest
+# TODO(nick): We should have a release build that bakes in a particular
+# SYNCLET_IMAGE tag.
 install:
 	./hide_tbd_warning go install ./...
+
+install-dev:
+	docker build -t $(SYNCLET_IMAGE):dirty -f synclet/Dockerfile .
+	$(eval HASH := $(shell docker inspect $(SYNCLET_IMAGE):dirty -f '{{.Id}}' | \
+                         sed -r 's/sha256:(.{20}).*/dirty-\1/'))
+	docker tag $(SYNCLET_IMAGE):dirty $(SYNCLET_IMAGE):$(HASH)
+	docker push $(SYNCLET_IMAGE):$(HASH)
+	./hide_tbd_warning go install -ldflags "-X './internal/synclet/sidecar.SyncletTag=$(HASH)'" ./...
 
 lint:
 	go vet -all -printfuncs=Verbosef,Infof,Debugf,PrintColorf ./...
@@ -35,9 +48,6 @@ benchmark:
 errcheck:
 	errcheck -ignoretests -ignoregenerated ./...
 
-start_tracer:
-	docker run -d -p5775:5775/udp -p6831:6831/udp -p6832:6832/udp -p5778:5778 -p16686:16686 -p14268:14268 -p9411:9411 jaegertracing/all-in-one:0.8.0
-
 timing: install
 	./scripts/timing.py
 
@@ -57,3 +67,8 @@ ci-container:
 
 clean:
 	go clean -cache -testcache -r -i ./...
+
+synclet-latest:
+	docker build -t $(SYNCLET_IMAGE):latest -f synclet/Dockerfile .
+	docker push $(SYNCLET_IMAGE):latest
+

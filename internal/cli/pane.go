@@ -29,7 +29,7 @@ func (c *paneCmd) register() *cobra.Command {
 	return cmd
 }
 
-func (c *paneCmd) run(args []string) error {
+func (c *paneCmd) run(ctx context.Context, args []string) error {
 	fmt.Printf("hello pane\n")
 
 	ttyOut, err := os.OpenFile("/dev/tty", syscall.O_WRONLY, 0)
@@ -47,8 +47,6 @@ func (c *paneCmd) run(args []string) error {
 	if err != nil {
 		return err
 	}
-
-	ctx := context.Background()
 
 	conn, err := grpc.Dial(
 		socketPath,
