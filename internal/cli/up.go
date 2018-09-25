@@ -63,7 +63,7 @@ func (c *upCmd) run(ctx context.Context, args []string) error {
 	}
 
 	if c.hud {
-		err = manifestCreator.Watch(ctx)
+		err = manifestCreator.Watch(ctx, args[0])
 	} else {
 		tf, err := tiltfile.Load(tiltfile.FileName, os.Stdout)
 		if err != nil {

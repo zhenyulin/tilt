@@ -5,5 +5,6 @@ type Resources struct {
 }
 
 type Resource struct {
-	Name string
+	Name        string
+	QueuedFiles []string
 }

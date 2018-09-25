@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"os"
 	"time"
 
 	"github.com/docker/distribution/reference"
@@ -17,6 +18,7 @@ import (
 	"github.com/windmilleng/tilt/internal/output"
 	"github.com/windmilleng/tilt/internal/state"
 	"github.com/windmilleng/tilt/internal/summary"
+	"github.com/windmilleng/tilt/internal/tiltfile"
 	"github.com/windmilleng/tilt/internal/watch"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -68,12 +70,37 @@ func NewUpper(ctx context.Context, b BuildAndDeployer, k8s k8s.Client, browserMo
 	}
 }
 
-func (u Upper) Watch(ctx context.Context) error {
+func (u Upper) Watch(ctx context.Context, serviceName string) error {
 	// start kubernetes watch
 	w, err := u.k8s.Watch(ctx, v1.NamespaceDefault)
 	if err != nil {
 		return err
 	}
+
+	tf, err := tiltfile.Load(tiltfile.FileName, os.Stdout)
+	if err != nil {
+		return err
+	}
+
+	manifests, err := tf.GetManifestConfigs(serviceName)
+	if err != nil {
+		return err
+	}
+
+	sw, err := makeManifestWatcher(ctx, u.watcherMaker, u.timerMaker, manifests)
+	if err != nil {
+		return err
+	}
+
+	st := &internalState{k8s: make(map[string]*k8sResource)}
+
+	for _, m := range manifests {
+		st.k8s[string(m.Name)] = &k8sResource{
+			manifest: m,
+			bs:       BuildState{}.NewStateWithFilesChanged([]string{AllFilesChanged}),
+		}
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -81,8 +108,25 @@ func (u Upper) Watch(ctx context.Context) error {
 		// new kubeinfo
 		case ev := <-w:
 			log.Printf("Kube event!: %v", ev)
+		case ev := <-sw.events:
+			if err := u.handleFSEvent(ctx, ev, st); err != nil {
+				return err
+			}
+		case err := <-sw.errs:
+			return err
+		}
+
+		if err := u.writeState(ctx, st); err != nil {
+			return err
 		}
 	}
+}
+
+func (u Upper) handleFSEvent(ctx context.Context, ev manifestFilesChangedEvent, st *internalState) error {
+	log.Printf("fs event! %v", ev.manifest.Name)
+	res := st.k8s[string(ev.manifest.Name)]
+	res.bs = res.bs.NewStateWithFilesChanged(ev.files)
+	return nil
 }
 
 func (u Upper) CreateManifests(ctx context.Context, manifests []model.Manifest, watchMounts bool) error {
@@ -136,7 +180,6 @@ func (u Upper) CreateManifests(ctx context.Context, manifests []model.Manifest, 
 
 	logger.Get(ctx).Debugf("[timing.py] finished initial build") // hook for timing.py
 
-	u.writeState(ctx, manifests)
 	output.Get(ctx).Summary(s.Output(ctx, u.resolveLB))
 
 	if watchMounts {
@@ -185,7 +228,6 @@ func (u Upper) CreateManifests(ctx context.Context, manifests []model.Manifest, 
 				}
 				logger.Get(ctx).Debugf("[timing.py] finished build from file change") // hook for timing.py
 
-				u.writeState(ctx, manifests)
 				output.Get(ctx).Summary(s.Output(ctx, u.resolveLB))
 				output.Get(ctx).Printf("Awaiting changes…")
 
@@ -202,13 +244,15 @@ func (u Upper) resolveLB(ctx context.Context, spec k8s.LoadBalancerSpec) *url.UR
 	return lb.URL
 }
 
-func (u Upper) writeState(ctx context.Context, manifests []model.Manifest) {
+func (u Upper) writeState(ctx context.Context, st *internalState) error {
 	var res []state.Resource
-	for _, m := range manifests {
-		res = append(res, state.Resource{Name: string(m.Name)})
+	for _, r := range st.k8s {
+		res = append(res, state.Resource{
+			Name:        string(r.manifest.Name),
+			QueuedFiles: r.bs.FilesChanged(),
+		})
 	}
-	log.Printf("huh %v %T %v", u.stateWriter, u.stateWriter, res)
-	u.stateWriter.WriteState(ctx, state.Resources{Resources: res})
+	return u.stateWriter.WriteState(ctx, state.Resources{Resources: res})
 }
 
 func (u Upper) logBuildEvent(ctx context.Context, manifest model.Manifest, buildState BuildState) {

@@ -25,8 +25,6 @@ type StateStore struct {
 }
 
 func (s *StateStore) WriteState(ctx context.Context, resources state.Resources) error {
-	log.Printf("sending")
-	defer log.Printf("sent")
 	select {
 	case <-ctx.Done():
 		return ctx.Err()

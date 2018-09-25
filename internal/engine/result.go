@@ -73,6 +73,8 @@ func NewBuildState(result BuildResult) BuildState {
 	}
 }
 
+const AllFilesChanged string = "/"
+
 func (b BuildState) LastImage() reference.NamedTagged {
 	return b.LastResult.Image
 }
