@@ -12,14 +12,19 @@ type ResourcesEvent struct {
 	Resources Resources
 }
 
+type ResourceEvent struct {
+	Resource Resource
+}
+
 func (ResourcesEvent) event() {}
+func (ResourceEvent) event()  {}
 
 type StateWriter interface {
-	WriteState(ctx context.Context, resources Resources) error
+	Write(ctx context.Context, ev Event) error
 }
 
 type StateReader interface {
-	Subscribe(ctx context.Context) (Subscription, error)
+	Subscribe(ctx context.Context) (chan []Event, error)
 }
 
 type Subscription interface {

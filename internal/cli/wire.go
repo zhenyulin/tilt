@@ -35,7 +35,8 @@ func wireManifestCreator(ctx context.Context, browser engine.BrowserMode) (model
 		engine.DefaultShouldFallBack,
 
 		hud.NewTTYPaneServer,
-		wire.Bind(new(state.StateWriter), new(hud.TTYPaneServer)),
+		wire.Bind(new(state.StateWriter), new(hud.PaneServerProvider)),
+		wire.Bind(new(state.ControlListener), new(hud.PaneServerProvider)),
 
 		engine.NewUpper,
 		wire.Bind(new(model.ManifestCreator), engine.Upper{}),

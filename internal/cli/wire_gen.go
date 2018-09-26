@@ -55,11 +55,11 @@ func wireManifestCreator(ctx context.Context, browser engine.BrowserMode) (model
 	fallbackTester := engine.DefaultShouldFallBack()
 	compositeBuildAndDeployer := engine.NewCompositeBuildAndDeployer(buildOrder, fallbackTester)
 	imageReaper := build.NewImageReaper(dockerCli)
-	ttyPaneServer, err := hud.NewTTYPaneServer()
+	paneServerProvider, err := hud.NewTTYPaneServer()
 	if err != nil {
 		return nil, err
 	}
-	upper := engine.NewUpper(ctx, compositeBuildAndDeployer, k8sClient, browser, imageReaper, ttyPaneServer)
+	upper := engine.NewUpper(ctx, compositeBuildAndDeployer, k8sClient, browser, imageReaper, paneServerProvider, paneServerProvider)
 	return upper, nil
 }
 

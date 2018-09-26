@@ -16,12 +16,13 @@ import (
 	"github.com/windmilleng/tilt/internal/state/states"
 )
 
-func NewTTYPaneServer() (state.StateWriter, error) {
+func NewTTYPaneServer() (*PaneServerProvider, error) {
 	// TODO(dbentley): bad! should use wire to inject this, but DI and servers are hard
 	store, err := states.NewStateStore(context.TODO())
 	if err != nil {
 		return nil, err
 	}
+	controlCh := make(chan state.ControlEvent)
 	socketPath, err := proto.LocateSocket()
 	if err != nil {
 		return nil, err
@@ -34,7 +35,7 @@ func NewTTYPaneServer() (state.StateWriter, error) {
 
 	grpcServer := grpc.NewServer()
 
-	a := &PaneServerAdapter{}
+	a := &PaneServerAdapter{stateReader: store, controlCh: controlCh}
 
 	proto.RegisterPaneServer(grpcServer, a)
 
@@ -46,21 +47,30 @@ func NewTTYPaneServer() (state.StateWriter, error) {
 		}
 	}()
 
-	return store, nil
+	return &PaneServerProvider{store, controlCh}, nil
+}
+
+type PaneServerProvider struct {
+	state.StateWriter
+	ch chan state.ControlEvent
+}
+
+func (p *PaneServerProvider) Ch() <-chan state.ControlEvent {
+	return p.ch
 }
 
 type PaneServerAdapter struct {
 	stateReader state.StateReader
+	controlCh   chan state.ControlEvent
 }
 
 func (a *PaneServerAdapter) ConnectPane(stream proto.Pane_ConnectPaneServer) error {
 	ctx := stream.Context()
 
-	// sub, err := a.stateReader.Subscribe(ctx)
-	// if err != nil {
-	// 	return err
-	// }
-	// log.Printf("sub! %v", sub)
+	evs, err := a.stateReader.Subscribe(ctx)
+	if err != nil {
+		return err
+	}
 
 	msg, err := stream.Recv()
 	if err != nil {
@@ -120,7 +130,7 @@ func (a *PaneServerAdapter) ConnectPane(stream proto.Pane_ConnectPaneServer) err
 	winchCh := make(chan os.Signal)
 	streamErrCh := make(chan error)
 
-	hud, err := NewHud()
+	hud, err := NewHud(evs, a.controlCh)
 	if err != nil {
 		return err
 	}

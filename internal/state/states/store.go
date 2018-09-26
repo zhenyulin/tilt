@@ -2,7 +2,6 @@ package states
 
 import (
 	"context"
-	"fmt"
 	"log"
 
 	"github.com/windmilleng/tilt/internal/state"
@@ -10,40 +9,43 @@ import (
 
 func NewStateStore(ctx context.Context) (*StateStore, error) {
 	s := &StateStore{
-		ch: make(chan state.Event),
+		inCh:  make(chan state.Event),
+		outCh: make(chan []state.Event),
 	}
 	go s.loop()
 	return s, nil
 }
 
 type StateStore struct {
-	ctx context.Context
-	ch  chan state.Event
-
-	// below is only accessed from loop()
-	resources state.Resources
+	inCh  chan state.Event
+	outCh chan []state.Event
 }
 
-func (s *StateStore) WriteState(ctx context.Context, resources state.Resources) error {
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case s.ch <- state.ResourcesEvent{Resources: resources}:
-		return nil
-	}
+func (s *StateStore) Write(ctx context.Context, ev state.Event) error {
+	s.inCh <- ev
+	return nil
 }
 
-func (s *StateStore) Subscribe(ctx context.Context) (state.Subscription, error) {
-	return nil, fmt.Errorf("StateStore.Subscribe: not yet implemented")
+func (s *StateStore) Subscribe(ctx context.Context) (chan []state.Event, error) {
+	// TODO(dbentley): what if someone else has already read
+	return s.outCh, nil
 }
 
 func (s *StateStore) loop() {
-	for ev := range s.ch {
-		switch ev := ev.(type) {
-		case state.ResourcesEvent:
-			log.Printf("got resources!")
-		default:
-			log.Printf("BAD %T %v", ev, ev)
+	var evs []state.Event
+	for {
+		outCh := s.outCh
+		if len(evs) == 0 {
+			// nothing to send; don't try
+			outCh = nil
+		}
+		select {
+		case ev := <-s.inCh:
+			log.Printf("store got an event")
+			evs = append(evs, ev)
+		case outCh <- evs:
+			log.Printf("store sent %d events", len(evs))
+			evs = nil
 		}
 	}
 }

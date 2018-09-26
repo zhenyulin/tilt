@@ -8,15 +8,27 @@ import (
 	"log"
 
 	"github.com/gdamore/tcell"
-	"github.com/rivo/tview"
+
+	"github.com/windmilleng/tilt/internal/state"
 )
 
 type Hud struct {
+	evs       chan []state.Event
+	resources map[string]state.Resource
+
+	nav navigationState
+
+	controlCh chan<- state.ControlEvent
+
 	screen tcell.Screen
 }
 
-func NewHud() (*Hud, error) {
-	return &Hud{}, nil
+func NewHud(evs chan []state.Event, controlCh chan<- state.ControlEvent) (*Hud, error) {
+	return &Hud{
+		evs:       evs,
+		resources: make(map[string]state.Resource),
+		controlCh: controlCh,
+	}, nil
 }
 
 func (h *Hud) Run(outerCtx context.Context, readTty *os.File, writeTty *os.File, winchCh chan os.Signal) error {
@@ -58,12 +70,16 @@ func (h *Hud) Run(outerCtx context.Context, readTty *os.File, writeTty *os.File,
 			// TODO(dbentley): cleanup
 			return nil
 		case ev := <-evCh:
-			log.Printf("event! %T %v %+v", ev, ev, ev)
 			if err := h.handleTcellEvent(ev); err != nil {
+				return err
+			}
+		case evs := <-h.evs:
+			if err := h.handleTiltEvents(evs); err != nil {
 				return err
 			}
 		}
 
+		h.nav = handleNavigation(h.nav, h, noopAction)
 		h.render()
 	}
 }
@@ -74,33 +90,32 @@ func (h *Hud) handleTcellEvent(ev tcell.Event) error {
 		switch ev.Key() {
 		case tcell.KeyCtrlC:
 			return fmt.Errorf("quit")
+		case tcell.KeyDown:
+			h.nav = handleNavigation(h.nav, h, downAction)
+		case tcell.KeyUp:
+			h.nav = handleNavigation(h.nav, h, upAction)
 		case tcell.KeyRune:
 			switch ev.Rune() {
 			case 'q':
 				return fmt.Errorf("quit")
+			case 'r':
+				h.controlCh <- state.RunWorkflowEvent{ResourceName: h.nav.selectedResource}
 			}
 		}
 	}
 	return nil
 }
 
-func (h *Hud) render() {
-	width, height := h.screen.Size()
-	f := tview.NewFlex()
-	f.SetRect(0, 0, width, height)
-	f.SetDirection(tview.FlexRow)
-
-	header := tview.NewBox().SetBorder(true).SetTitle("header")
-	f.AddItem(header, 4, 0, false)
-
-	inner := tview.NewFlex()
-	inner.AddItem(tview.NewBox().SetBorder(true).SetTitle("resources"), 0, 1, false)
-	inner.AddItem(tview.NewBox().SetBorder(true).SetTitle("stream"), 0, 1, false)
-	f.AddItem(inner, 0, 1, false)
-
-	footer := tview.NewBox().SetBorder(true).SetTitle("footer")
-	f.AddItem(footer, 4, 0, false)
-
-	f.Draw(h.screen)
-	h.screen.Show()
+func (h *Hud) handleTiltEvents(evs []state.Event) error {
+	for _, ev := range evs {
+		switch ev := ev.(type) {
+		case state.ResourcesEvent:
+			for _, res := range ev.Resources.Resources {
+				h.resources[res.Name] = res
+			}
+		default:
+			return fmt.Errorf("hud.HandleTiltEvents: unexpected event %T %v", ev, ev)
+		}
+	}
+	return nil
 }

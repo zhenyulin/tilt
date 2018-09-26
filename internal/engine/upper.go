@@ -50,12 +50,13 @@ type Upper struct {
 	browserMode  BrowserMode
 	reaper       build.ImageReaper
 	stateWriter  state.StateWriter
+	control      state.ControlListener
 }
 
 type watcherMaker func() (watch.Notify, error)
 type timerMaker func(d time.Duration) <-chan time.Time
 
-func NewUpper(ctx context.Context, b BuildAndDeployer, k8s k8s.Client, browserMode BrowserMode, reaper build.ImageReaper, sw state.StateWriter) Upper {
+func NewUpper(ctx context.Context, b BuildAndDeployer, k8s k8s.Client, browserMode BrowserMode, reaper build.ImageReaper, sw state.StateWriter, control state.ControlListener) Upper {
 	watcherMaker := func() (watch.Notify, error) {
 		return watch.NewWatcher()
 	}
@@ -67,6 +68,7 @@ func NewUpper(ctx context.Context, b BuildAndDeployer, k8s k8s.Client, browserMo
 		browserMode:  browserMode,
 		reaper:       reaper,
 		stateWriter:  sw,
+		control:      control,
 	}
 }
 
@@ -101,6 +103,10 @@ func (u Upper) Watch(ctx context.Context, serviceName string) error {
 		}
 	}
 
+	if err := u.writeState(ctx, st); err != nil {
+		return err
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -114,6 +120,15 @@ func (u Upper) Watch(ctx context.Context, serviceName string) error {
 			}
 		case err := <-sw.errs:
 			return err
+		case ev := <-u.control.Ch():
+			switch ev := ev.(type) {
+			case state.RunWorkflowEvent:
+				if err := u.pipeline(ctx, ev.ResourceName, st); err != nil {
+					return err
+				}
+			default:
+				return fmt.Errorf("unexpected ControlEvent %T %v", ev, ev)
+			}
 		}
 
 		if err := u.writeState(ctx, st); err != nil {
@@ -126,6 +141,18 @@ func (u Upper) handleFSEvent(ctx context.Context, ev manifestFilesChangedEvent, 
 	log.Printf("fs event! %v", ev.manifest.Name)
 	res := st.k8s[string(ev.manifest.Name)]
 	res.bs = res.bs.NewStateWithFilesChanged(ev.files)
+	return nil
+}
+
+func (u Upper) pipeline(ctx context.Context, resourceName string, st *internalState) error {
+	res := st.k8s[resourceName]
+	buildResult, err := u.b.BuildAndDeploy(ctx, res.manifest, res.bs)
+	if err == nil {
+		res.bs = NewBuildState(buildResult)
+	} else if isPermanentError(err) {
+		return err
+	}
+
 	return nil
 }
 
@@ -252,7 +279,7 @@ func (u Upper) writeState(ctx context.Context, st *internalState) error {
 			QueuedFiles: r.bs.FilesChanged(),
 		})
 	}
-	return u.stateWriter.WriteState(ctx, state.Resources{Resources: res})
+	return u.stateWriter.Write(ctx, state.ResourcesEvent{Resources: state.Resources{Resources: res}})
 }
 
 func (u Upper) logBuildEvent(ctx context.Context, manifest model.Manifest, buildState BuildState) {
