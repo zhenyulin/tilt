@@ -53,14 +53,26 @@ type PaneServerAdapter struct {
 	stateReader state.StateReader
 }
 
-func (a *PaneServerAdapter) Connect(req *proto.ConnectRequest, stream proto.Pane_ConnectServer) error {
+func (a *PaneServerAdapter) ConnectPane(stream proto.Pane_ConnectPaneServer) error {
 	ctx := stream.Context()
 
-	sub, err := a.stateReader.Subscribe(ctx)
+	// sub, err := a.stateReader.Subscribe(ctx)
+	// if err != nil {
+	// 	return err
+	// }
+	// log.Printf("sub! %v", sub)
+
+	msg, err := stream.Recv()
 	if err != nil {
 		return err
 	}
-	fdConn, err := net.DialUnix("unix", &net.UnixAddr{Name: "", Net: "unix"}, &net.UnixAddr{Name: req.FdSocketPath, Net: "unix"})
+
+	connectMsg := msg.GetConnect()
+	if connectMsg == nil {
+		return fmt.Errorf("expected a connect msg; got %T %v", msg, msg)
+	}
+
+	fdConn, err := net.DialUnix("unix", &net.UnixAddr{Name: "", Net: "unix"}, &net.UnixAddr{Name: connectMsg.FdSocketPath, Net: "unix"})
 	if err != nil {
 		return err
 	}
@@ -69,7 +81,7 @@ func (a *PaneServerAdapter) Connect(req *proto.ConnectRequest, stream proto.Pane
 	if err != nil {
 		return err
 	}
-	num := 5
+	num := 5 // stdin, stdout, stderr, readTTY, writeTTY
 	buf := make([]byte, syscall.CmsgSpace(num*4))
 	_, _, _, _, err = syscall.Recvmsg(int(fdConnF.Fd()), nil, buf, 0)
 	if err != nil {
@@ -101,17 +113,41 @@ func (a *PaneServerAdapter) Connect(req *proto.ConnectRequest, stream proto.Pane
 		log.Printf("whoops %v", err)
 	}
 
-	// TODO(dbentley)
-	return NewByteTtyPane(ctx, sub, fs[0], fs[1], fs[2], fs[3], fs[4])
+	fs[0].Close()
+	fs[1].Close()
+	fs[2].Close()
+
+	winchCh := make(chan os.Signal)
+	streamErrCh := make(chan error)
+
+	hud, err := NewHud()
+	if err != nil {
+		return err
+	}
+	hudDoneCh := make(chan error)
+	hudCtx, cancelHud := context.WithCancel(ctx)
+	go func() {
+		hudDoneCh <- hud.Run(hudCtx, fs[3], fs[4], winchCh)
+	}()
+
+	go func() {
+		for {
+			_, err := stream.Recv() // assume it's a window change message
+			if err != nil {
+				streamErrCh <- err
+				return
+			}
+			winchCh <- syscall.SIGWINCH
+		}
+	}()
+
+	select {
+	case err := <-hudDoneCh:
+		log.Printf("hud is done")
+		return err
+	case err := <-streamErrCh:
+		cancelHud()
+		<-hudDoneCh
+		return err
+	}
 }
-
-// func f() {
-// 	screen, err := tcell.NewTerminfoScreenFromTty(fs[3], fs[4])
-// 	if err != nil {
-// 		log.Printf("can't start screen")
-// 	}
-
-// 	if err := screen.Init(); err != nil {
-// 		log.Printf("can't init screen %v", err)
-// 	}
-// }

@@ -5,12 +5,23 @@ package pane;
 option go_package = "github.com/windmilleng/tilt/internal/pane/proto;proto";
 
 service Pane {
-  rpc Connect (ConnectRequest) returns (stream ConnectReply) {}
+  rpc ConnectPane (stream PaneControl) returns (DoneReply) {}
 }
+
+message PaneControl {
+  oneof control {
+    ConnectRequest connect = 1;
+    WindowChange window_change = 2;
+  }
+}
+
 
 message ConnectRequest {
   string fd_socket_path = 1;
 }
 
-message ConnectReply {
+message WindowChange {
+}
+
+message DoneReply {
 }

@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"syscall"
 	"time"
@@ -72,8 +73,15 @@ func (c *paneCmd) run(ctx context.Context, args []string) error {
 		return err
 	}
 
-	stream, err := cl.Connect(ctx, &proto.ConnectRequest{FdSocketPath: fdSocketPath})
+	stream, err := cl.ConnectPane(ctx)
 	if err != nil {
+		return err
+	}
+
+	if err := stream.Send(
+		&proto.PaneControl{
+			Control: &proto.PaneControl_Connect{Connect: &proto.ConnectRequest{FdSocketPath: fdSocketPath}},
+		}); err != nil {
 		return err
 	}
 
@@ -87,15 +95,27 @@ func (c *paneCmd) run(ctx context.Context, args []string) error {
 	})
 
 	g.Go(func() error {
-		for {
-			reply, err := stream.Recv()
-			if err != nil {
-				return err
-			}
-			log.Printf("reply! %v", reply)
-		}
+		return stream.RecvMsg(nil)
+	})
 
-		return nil
+	g.Go(func() error {
+		winchCh := make(chan os.Signal, 10) // 10 is enough that we don't overflow the buffer
+		signal.Notify(winchCh, syscall.SIGWINCH)
+		defer signal.Stop(winchCh)
+		for {
+			select {
+			case <-winchCh:
+				log.Printf("sending winch")
+				if err := stream.Send(
+					&proto.PaneControl{
+						Control: &proto.PaneControl_WindowChange{WindowChange: &proto.WindowChange{}},
+					}); err != nil {
+					return err
+				}
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
 	})
 
 	return g.Wait()
@@ -107,6 +127,7 @@ func UnixDial(addr string, timeout time.Duration) (net.Conn, error) {
 }
 
 func sendFDs(fdListener *net.UnixListener, fs []*os.File) error {
+	defer fdListener.Close()
 	fdConn, err := fdListener.AcceptUnix()
 	log.Printf("got a client who wants fds %v", fdConn)
 	if err != nil {

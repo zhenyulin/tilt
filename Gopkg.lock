@@ -326,6 +326,21 @@
   version = "v1.7.0"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/gdamore/encoding"
+  packages = ["."]
+  revision = "b23993cbb6353f0e6aa98d0ee318a34728f628b9"
+
+[[projects]]
+  name = "github.com/gdamore/tcell"
+  packages = [
+    ".",
+    "terminfo"
+  ]
+  revision = "de7e78efa4a71b3f36c7154989c529dbdf9ae623"
+  version = "v1.1.0"
+
+[[projects]]
   name = "github.com/ghodss/yaml"
   packages = ["."]
   revision = "0ca9ea5df5451ffdf184b4428c902747c2c11cd7"
@@ -485,6 +500,12 @@
   revision = "b84e30acd515aadc4b783ad4ff83aff3299bdfe0"
 
 [[projects]]
+  name = "github.com/lucasb-eyer/go-colorful"
+  packages = ["."]
+  revision = "345fbb3dbcdb252d9985ee899a84963c0fa24c82"
+  version = "v1.0"
+
+[[projects]]
   name = "github.com/mattn/go-colorable"
   packages = ["."]
   revision = "167de6bfdfba052fa6b2d3664c8f5272e23c9072"
@@ -494,6 +515,12 @@
   name = "github.com/mattn/go-isatty"
   packages = ["."]
   revision = "0360b2af4f38e8d38c7fce2a9f4e702702d73a39"
+  version = "v0.0.3"
+
+[[projects]]
+  name = "github.com/mattn/go-runewidth"
+  packages = ["."]
+  revision = "ce7b0b5c7b45a81508558cd1dba6bb1e4ddb51bb"
   version = "v0.0.3"
 
 [[projects]]
@@ -683,6 +710,12 @@
   revision = "e2704e165165ec55d062f5919b4b29494e9fa790"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/rivo/tview"
+  packages = ["."]
+  revision = "29458dad3ecc3dc44d699cf26c8e484385b46189"
+
+[[projects]]
   name = "github.com/sirupsen/logrus"
   packages = ["."]
   revision = "3e01752db0189b9157070a0e1668a620f9a85da2"
@@ -814,6 +847,8 @@
   packages = [
     "collate",
     "collate/build",
+    "encoding",
+    "encoding/internal/identifier",
     "internal/colltab",
     "internal/gen",
     "internal/tag",
@@ -1101,6 +1136,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "19f6f18cc8aa92fd4b8124479a604ea44b79704ca6b71275de154356cf03dba2"
+  inputs-digest = "bc427765e76a93689a6c7ec0e10985e7a592f69b8024d2cd7526fbabcfc1ba30"
   solver-name = "gps-cdcl"
   solver-version = 1
