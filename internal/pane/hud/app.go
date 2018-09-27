@@ -8,13 +8,16 @@ import (
 	"log"
 
 	"github.com/gdamore/tcell"
+	appsv1 "k8s.io/api/apps/v1"
 
+	"github.com/windmilleng/tilt/internal/k8s"
 	"github.com/windmilleng/tilt/internal/state"
 )
 
 type Hud struct {
 	evs       chan []state.Event
 	resources map[string]state.Resource
+	k8s       map[string]interface{}
 
 	nav navigationState
 
@@ -27,6 +30,7 @@ func NewHud(evs chan []state.Event, controlCh chan<- state.ControlEvent) (*Hud, 
 	return &Hud{
 		evs:       evs,
 		resources: make(map[string]state.Resource),
+		k8s:       make(map[string]interface{}),
 		controlCh: controlCh,
 	}, nil
 }
@@ -113,9 +117,27 @@ func (h *Hud) handleTiltEvents(evs []state.Event) error {
 			for _, res := range ev.Resources.Resources {
 				h.resources[res.Name] = res
 			}
+		case state.KubeEvent:
+			switch ev := ev.Event.(type) {
+			case k8s.AddInformEvent:
+				h.setK8sObject(ev.Obj)
+			case k8s.UpdateInformEvent:
+				h.setK8sObject(ev.NewObj)
+			case k8s.DeleteInformEvent:
+				log.Printf("k8s delete!!! Unhandled!: %T %+v", ev.Last, ev.Last)
+			}
 		default:
 			return fmt.Errorf("hud.HandleTiltEvents: unexpected event %T %v", ev, ev)
 		}
 	}
 	return nil
+}
+
+func (h *Hud) setK8sObject(obj interface{}) {
+	switch obj := obj.(type) {
+	case *appsv1.Deployment:
+		h.k8s[obj.SelfLink] = obj
+	default:
+		log.Printf("unknown k8s object type: %T %+v", obj)
+	}
 }

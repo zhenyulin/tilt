@@ -7,6 +7,8 @@ import (
 	"context"
 
 	"github.com/google/go-cloud/wire"
+	"k8s.io/client-go/kubernetes"
+
 	"github.com/windmilleng/tilt/internal/build"
 	"github.com/windmilleng/tilt/internal/docker"
 	"github.com/windmilleng/tilt/internal/engine"
@@ -21,7 +23,7 @@ func wireManifestCreator(ctx context.Context, browser engine.BrowserMode) (model
 		k8s.DetectEnv,
 
 		k8s.ProvidePortForwarder,
-		k8s.ProvideRESTClient,
+		kubernetes.NewForConfig,
 		k8s.ProvideRESTConfig,
 		k8s.NewK8sClient,
 		wire.Bind(new(k8s.Client), k8s.K8sClient{}),

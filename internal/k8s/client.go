@@ -66,7 +66,7 @@ type Client interface {
 type K8sClient struct {
 	env           Env
 	kubectlRunner kubectlRunner
-	core          apiv1.CoreV1Interface
+	clientset     *kubernetes.Clientset
 	restConfig    *rest.Config
 	portForwarder PortForwarder
 }
@@ -78,7 +78,7 @@ type PortForwarder func(ctx context.Context, restConfig *rest.Config, core apiv1
 func NewK8sClient(
 	ctx context.Context,
 	env Env,
-	core apiv1.CoreV1Interface,
+	clientset *kubernetes.Clientset,
 	restConfig *rest.Config,
 	pf PortForwarder) K8sClient {
 
@@ -90,7 +90,7 @@ func NewK8sClient(
 	return K8sClient{
 		env:           env,
 		kubectlRunner: realKubectlRunner{},
-		core:          core,
+		clientset:     clientset,
 		restConfig:    restConfig,
 		portForwarder: pf,
 	}
@@ -145,7 +145,7 @@ func (k K8sClient) resolveLoadBalancerFromK8sAPI(ctx context.Context, lb LoadBal
 	port := lb.Ports[0]
 
 	// TODO(nick): Use lb.Namespace when it's committed.
-	svc, err := k.core.Services("default").Get(lb.Name, metav1.GetOptions{})
+	svc, err := k.clientset.Core().Services("default").Get(lb.Name, metav1.GetOptions{})
 	if err != nil {
 		return LoadBalancer{}, fmt.Errorf("ResolveLoadBalancer#Services: %v", err)
 	}
@@ -223,23 +223,23 @@ func (k K8sClient) applyOrDeleteFromEntities(ctx context.Context, cmd string, en
 	return k.kubectlRunner.execWithStdin(ctx, args, stdin)
 }
 
-func ProvideCoreInterface(cfg *rest.Config) (apiv1.CoreV1Interface, error) {
-	clientSet, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		return nil, err
-	}
+// func ProvideCoreInterface(cfg *rest.Config) (apiv1.CoreV1Interface, error) {
+// 	clientSet, err := kubernetes.NewForConfig(cfg)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	return clientSet.CoreV1(), nil
-}
+// 	return clientSet.CoreV1(), nil
+// }
 
-func ProvideRESTClient(cfg *rest.Config) (apiv1.CoreV1Interface, error) {
-	clientSet, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		return nil, err
-	}
+// func ProvideRESTClient(cfg *rest.Config) (apiv1.CoreV1Interface, error) {
+// 	clientSet, err := kubernetes.NewForConfig(cfg)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	return clientSet.CoreV1(), nil
-}
+// 	return clientSet.CoreV1(), nil
+// }
 
 func ProvideRESTConfig() (*rest.Config, error) {
 	rules := clientcmd.NewDefaultClientConfigLoadingRules()

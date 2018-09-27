@@ -41,7 +41,7 @@ func (k K8sClient) PodWithImage(ctx context.Context, image reference.NamedTagged
 	defer span.Finish()
 
 	// TODO(nick): This should take a Namespace, and maybe some label selectors?
-	podList, err := k.core.Pods("default").List(metav1.ListOptions{})
+	podList, err := k.clientset.Core().Pods("default").List(metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("PodWithImage: %v", err)
 	}

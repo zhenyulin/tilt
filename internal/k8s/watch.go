@@ -14,42 +14,42 @@ type InformEvent interface {
 }
 
 type AddInformEvent struct {
-	obj interface{}
+	Obj interface{}
 }
 
 type UpdateInformEvent struct {
-	oldObj interface{}
-	newObj interface{}
+	OldObj interface{}
+	NewObj interface{}
 }
 
 type DeleteInformEvent struct {
-	last interface{}
+	Last interface{}
 }
 
 func (AddInformEvent) informEvent()    {}
 func (UpdateInformEvent) informEvent() {}
 func (DeleteInformEvent) informEvent() {}
 
-func (k K8sClient) Watch(ctx context.Context, namespace string) (chan InformEvent, error) {
+func (k K8sClient) WatchBlank(ctx context.Context, namespace string) (chan InformEvent, error) {
 	return make(chan InformEvent), nil
 }
 
-func (k K8sClient) WatchReal(ctx context.Context, namespace string) (chan InformEvent, error) {
+func (k K8sClient) Watch(ctx context.Context, namespace string) (chan InformEvent, error) {
 
-	lw := cache.NewListWatchFromClient(k.core.RESTClient(), "replicasets", namespace, fields.Everything())
+	lw := cache.NewListWatchFromClient(k.clientset.Apps().RESTClient(), "deployments", namespace, fields.Everything())
 
 	ch := make(chan InformEvent)
 	_, controller := cache.NewInformer(
 		lw, &v1.Deployment{}, 10*time.Second,
 		cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
-				ch <- AddInformEvent{obj: obj}
+				ch <- AddInformEvent{Obj: obj}
 			},
 			UpdateFunc: func(oldObj interface{}, newObj interface{}) {
-				ch <- UpdateInformEvent{oldObj: oldObj, newObj: newObj}
+				ch <- UpdateInformEvent{OldObj: oldObj, NewObj: newObj}
 			},
 			DeleteFunc: func(last interface{}) {
-				ch <- DeleteInformEvent{last: last}
+				ch <- DeleteInformEvent{Last: last}
 			},
 		})
 

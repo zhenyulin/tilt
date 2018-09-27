@@ -13,6 +13,7 @@ import (
 	"github.com/windmilleng/tilt/internal/k8s"
 	"github.com/windmilleng/tilt/internal/model"
 	"github.com/windmilleng/tilt/internal/pane/hud"
+	"k8s.io/client-go/kubernetes"
 )
 
 // Injectors from wire.go:
@@ -26,12 +27,12 @@ func wireManifestCreator(ctx context.Context, browser engine.BrowserMode) (model
 	if err != nil {
 		return nil, err
 	}
-	coreV1Interface, err := k8s.ProvideRESTClient(config)
+	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		return nil, err
 	}
 	portForwarder := k8s.ProvidePortForwarder()
-	k8sClient := k8s.NewK8sClient(ctx, env, coreV1Interface, config, portForwarder)
+	k8sClient := k8s.NewK8sClient(ctx, env, clientset, config, portForwarder)
 	sidecarSyncletManager := engine.NewSidecarSyncletManager(k8sClient)
 	syncletBuildAndDeployer := engine.NewSyncletBuildAndDeployer(k8sClient, sidecarSyncletManager)
 	dockerCli, err := docker.DefaultDockerClient(ctx, env)

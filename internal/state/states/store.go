@@ -2,7 +2,6 @@ package states
 
 import (
 	"context"
-	"log"
 
 	"github.com/windmilleng/tilt/internal/state"
 )
@@ -41,10 +40,8 @@ func (s *StateStore) loop() {
 		}
 		select {
 		case ev := <-s.inCh:
-			log.Printf("store got an event")
 			evs = append(evs, ev)
 		case outCh <- evs:
-			log.Printf("store sent %d events", len(evs))
 			evs = nil
 		}
 	}

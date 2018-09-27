@@ -111,9 +111,8 @@ func (u Upper) Watch(ctx context.Context, serviceName string) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		// new kubeinfo
 		case ev := <-w:
-			log.Printf("Kube event!: %v", ev)
+			u.stateWriter.Write(ctx, state.KubeEvent{Event: ev})
 		case ev := <-sw.events:
 			if err := u.handleFSEvent(ctx, ev, st); err != nil {
 				return err
@@ -138,7 +137,6 @@ func (u Upper) Watch(ctx context.Context, serviceName string) error {
 }
 
 func (u Upper) handleFSEvent(ctx context.Context, ev manifestFilesChangedEvent, st *internalState) error {
-	log.Printf("fs event! %v", ev.manifest.Name)
 	res := st.k8s[string(ev.manifest.Name)]
 	res.bs = res.bs.NewStateWithFilesChanged(ev.files)
 	return nil
@@ -276,6 +274,7 @@ func (u Upper) writeState(ctx context.Context, st *internalState) error {
 	for _, r := range st.k8s {
 		res = append(res, state.Resource{
 			Name:        string(r.manifest.Name),
+			K8sYaml:     r.manifest.K8sYaml,
 			QueuedFiles: r.bs.FilesChanged(),
 		})
 	}

@@ -30,7 +30,7 @@ func (k K8sClient) ForwardPort(ctx context.Context, namespace string, podID PodI
 		return 0, nil, errors.Wrap(err, "failed to find an available local port")
 	}
 
-	closer, err = k.portForwarder(ctx, k.restConfig, k.core, namespace, podID, localPort, remotePort)
+	closer, err = k.portForwarder(ctx, k.restConfig, k.clientset.Core(), namespace, podID, localPort, remotePort)
 	if err != nil {
 		return 0, nil, err
 	}
