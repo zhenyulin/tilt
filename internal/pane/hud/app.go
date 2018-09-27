@@ -15,12 +15,13 @@ import (
 )
 
 type Hud struct {
-	evs       chan []state.Event
-	resources map[string]state.Resource
+	resources state.Resources
 	k8s       map[string]interface{}
+	spans     map[state.SpanID]state.Span
 
 	nav navigationState
 
+	evs       chan []state.Event
 	controlCh chan<- state.ControlEvent
 
 	screen tcell.Screen
@@ -29,8 +30,8 @@ type Hud struct {
 func NewHud(evs chan []state.Event, controlCh chan<- state.ControlEvent) (*Hud, error) {
 	return &Hud{
 		evs:       evs,
-		resources: make(map[string]state.Resource),
 		k8s:       make(map[string]interface{}),
+		spans:     make(map[state.SpanID]state.Span),
 		controlCh: controlCh,
 	}, nil
 }
@@ -114,9 +115,7 @@ func (h *Hud) handleTiltEvents(evs []state.Event) error {
 	for _, ev := range evs {
 		switch ev := ev.(type) {
 		case state.ResourcesEvent:
-			for _, res := range ev.Resources.Resources {
-				h.resources[res.Name] = res
-			}
+			h.resources = ev.Resources
 		case state.KubeEvent:
 			switch ev := ev.Event.(type) {
 			case k8s.AddInformEvent:
@@ -126,6 +125,8 @@ func (h *Hud) handleTiltEvents(evs []state.Event) error {
 			case k8s.DeleteInformEvent:
 				log.Printf("k8s delete!!! Unhandled!: %T %+v", ev.Last, ev.Last)
 			}
+		case state.SpanEvent:
+			h.spans[ev.Span.ID] = ev.Span
 		default:
 			return fmt.Errorf("hud.HandleTiltEvents: unexpected event %T %v", ev, ev)
 		}

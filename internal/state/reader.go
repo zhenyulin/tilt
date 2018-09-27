@@ -14,10 +14,6 @@ type ResourcesEvent struct {
 	Resources Resources
 }
 
-type ResourceEvent struct {
-	Resource Resource
-}
-
 type KubeEvent struct {
 	Event k8s.InformEvent
 }
@@ -27,12 +23,11 @@ type SpanEvent struct {
 }
 
 func (ResourcesEvent) event() {}
-func (ResourceEvent) event()  {}
 func (KubeEvent) event()      {}
 func (SpanEvent) event()      {}
 
 type StateWriter interface {
-	StartRootSpanFromCtx(ctx context.Context, name string) (SingleSpanWriter, ctx)
+	StartRootSpan(name string) SingleSpanWriter
 	Write(ctx context.Context, ev Event) error
 }
 
@@ -48,7 +43,12 @@ type tiltContextKeyStruct struct{}
 
 var tiltContextKey tiltContextKeyStruct
 
-func StartSpanFromContext(ctx context.Context, name string) (SingleSpanWriter, ctx) {
+func StartRootSpanFromContext(ctx context.Context, w StateWriter, name string) (SingleSpanWriter, context.Context) {
+	s := w.StartRootSpan(name)
+	return s, context.WithValue(ctx, tiltContextKey, s)
+}
+
+func StartSpanFromContext(ctx context.Context, name string) (SingleSpanWriter, context.Context) {
 	w := GetSpan(ctx)
 	s := w.StartChild(name)
 	return s, context.WithValue(ctx, tiltContextKey, s)
@@ -57,7 +57,7 @@ func StartSpanFromContext(ctx context.Context, name string) (SingleSpanWriter, c
 func GetSpan(ctx context.Context) SingleSpanWriter {
 	v := ctx.Value(tiltContextKey)
 	if v == nil {
-		panic("context has no span writer")
+		return nil
 	}
 	return v.(SingleSpanWriter)
 }

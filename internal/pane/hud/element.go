@@ -3,6 +3,7 @@ package hud
 import (
 	"fmt"
 	"sort"
+	"time"
 
 	// "log"
 
@@ -33,12 +34,12 @@ func (h *Hud) render() {
 	p.write("header!")
 
 	mainPanelHeight := height - (headerHeight + footerHeight)
+
 	resourcesCanvas := divideCanvas(c, 0, headerHeight, width/2, mainPanelHeight)
 	h.renderResources(resourcesCanvas)
 
 	streamCanvas := divideCanvas(c, width/2, headerHeight, width/2, mainPanelHeight)
-	p = newPen(streamCanvas, 0, 0)
-	p.write("stream")
+	h.renderStream(streamCanvas)
 
 	footerCanvas := divideCanvas(c, 0, height-footerHeight, width, footerHeight)
 	p = newPen(footerCanvas, 0, 0)
@@ -55,14 +56,14 @@ const resourceHeight = 6
 func (h *Hud) renderResources(c Canvas) {
 	width, _ := c.Size()
 	var keys []string
-	for k, _ := range h.resources {
-		keys = append(keys, k)
+	for _, v := range h.resources.Resources {
+		keys = append(keys, v.Name)
 	}
 
 	sort.Strings(keys)
 	for i, k := range keys {
 		rc := divideCanvas(c, 0, resourceHeight*i, width, resourceHeight)
-		r := h.resources[k]
+		r := h.resources.Resources[k]
 		h.renderResource(rc, r)
 	}
 
@@ -113,4 +114,24 @@ func (h *Hud) renderResource(c Canvas, r state.Resource) {
 		p.write(fmt.Sprintf("svc/%v ", serviceEntity.Name()))
 	}
 	p.write("]")
+}
+
+func (h *Hud) renderStream(c Canvas) {
+	p := newPen(c, 0, 0)
+	p.write("stream ")
+	spanID := h.resources.Running
+	if spanID == state.NoSpanID {
+		spanID = h.resources.Last
+	}
+
+	if spanID == state.NoSpanID {
+		return
+	}
+
+	span := h.spans[spanID]
+
+	p.write(fmt.Sprintf(" span! %v ", spanID))
+	if span.End != (time.Time{}) {
+		p.write("done ")
+	}
 }

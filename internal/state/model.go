@@ -1,11 +1,15 @@
 package state
 
 import (
-	"context"
+	"time"
 )
 
+// XXX(dbentley): rename to State
 type Resources struct {
-	Resources []Resource
+	Resources map[string]Resource
+	RunQueue  []string
+	Running   SpanID
+	Last      SpanID
 }
 
 type Resource struct {
@@ -15,6 +19,8 @@ type Resource struct {
 }
 
 type SingleSpanWriter interface {
+	ID() SpanID
+
 	LogKV(kvs ...string)
 
 	StartChild(name string) SingleSpanWriter
@@ -25,16 +31,18 @@ type SingleSpanWriter interface {
 
 type SpanID int64
 
+const NoSpanID SpanID = 0
+
 type Span struct {
 	ID SpanID
 
 	// set at start
 	Parent SpanID
 	Name   string
-	End    time.Time
+	Begin  time.Time
 
 	// set as it goes on
-	kvs map[string]string
+	Fields map[string]string
 
 	// set at finish
 	Err string // string so it can be serialized; empty means no error

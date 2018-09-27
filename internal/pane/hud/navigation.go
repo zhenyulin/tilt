@@ -19,7 +19,7 @@ const (
 
 func handleNavigation(c navigationState, h *Hud, a action) navigationState {
 	var keys []string
-	for k, _ := range h.resources {
+	for k, _ := range h.resources.Resources {
 		keys = append(keys, k)
 	}
 

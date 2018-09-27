@@ -55,12 +55,13 @@ func (c *upCmd) run(ctx context.Context, args []string) error {
 
 	logOutput(fmt.Sprintf("Starting Tilt (built %s)…\n", buildDateStamp()))
 
-	logOutput(fmt.Sprintf("welp %v", tiltfile.FileName))
-
+	log.Printf("creating")
 	manifestCreator, err := wireManifestCreator(ctx, c.browserMode)
 	if err != nil {
 		return err
 	}
+
+	log.Printf("created")
 
 	if c.hud {
 		err = manifestCreator.Watch(ctx, args[0])

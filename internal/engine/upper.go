@@ -94,7 +94,10 @@ func (u Upper) Watch(ctx context.Context, serviceName string) error {
 		return err
 	}
 
-	st := &internalState{k8s: make(map[string]*k8sResource)}
+	st := &internalState{
+		k8s:        make(map[string]*k8sResource),
+		pipelineCh: make(chan brAndErr),
+	}
 
 	for _, m := range manifests {
 		st.k8s[string(m.Name)] = &k8sResource{
@@ -122,12 +125,31 @@ func (u Upper) Watch(ctx context.Context, serviceName string) error {
 		case ev := <-u.control.Ch():
 			switch ev := ev.(type) {
 			case state.RunWorkflowEvent:
-				if err := u.pipeline(ctx, ev.ResourceName, st); err != nil {
-					return err
+				seen := false
+				for _, n := range st.runQueue {
+					if n == ev.ResourceName {
+						seen = true
+					}
+				}
+				if !seen {
+					st.runQueue = append(st.runQueue, ev.ResourceName)
 				}
 			default:
 				return fmt.Errorf("unexpected ControlEvent %T %v", ev, ev)
 			}
+		case brAndErr := <-st.pipelineCh:
+			st.runningSpan.Finish()
+			st.runningSpan, st.lastSpan = nil, st.runningSpan
+
+			br, err := brAndErr.br, brAndErr.err
+			if err != nil && isPermanentError(err) {
+				return err
+			}
+			st.k8s[st.runningResource].bs = NewBuildState(br)
+		}
+
+		if err := u.dispatch(ctx, st); err != nil {
+			return err
 		}
 
 		if err := u.writeState(ctx, st); err != nil {
@@ -142,14 +164,28 @@ func (u Upper) handleFSEvent(ctx context.Context, ev manifestFilesChangedEvent, 
 	return nil
 }
 
-func (u Upper) pipeline(ctx context.Context, resourceName string, st *internalState) error {
-	res := st.k8s[resourceName]
-	buildResult, err := u.b.BuildAndDeploy(ctx, res.manifest, res.bs)
-	if err == nil {
-		res.bs = NewBuildState(buildResult)
-	} else if isPermanentError(err) {
-		return err
+func (u Upper) dispatch(ctx context.Context, st *internalState) error {
+	if st.runningSpan != nil || len(st.runQueue) == 0 {
+		// can't start anything
+		return nil
 	}
+
+	log.Printf("starting something")
+
+	resourceName := st.runQueue[0]
+	st.runQueue = st.runQueue[1:]
+	res := st.k8s[resourceName]
+
+	span, ctx := state.StartRootSpanFromContext(ctx, u.stateWriter, "BuildAndDeploy")
+	span.LogKV("resource", resourceName)
+	st.runningResource = resourceName
+	st.runningSpan = span
+
+	go func() {
+		buildResult, err := u.b.BuildAndDeploy(ctx, res.manifest, res.bs)
+		span.FinishErr(err)
+		st.pipelineCh <- brAndErr{buildResult, err}
+	}()
 
 	return nil
 }
@@ -270,15 +306,28 @@ func (u Upper) resolveLB(ctx context.Context, spec k8s.LoadBalancerSpec) *url.UR
 }
 
 func (u Upper) writeState(ctx context.Context, st *internalState) error {
-	var res []state.Resource
+	res := map[string]state.Resource{}
 	for _, r := range st.k8s {
-		res = append(res, state.Resource{
+		res[string(r.manifest.Name)] = state.Resource{
 			Name:        string(r.manifest.Name),
 			K8sYaml:     r.manifest.K8sYaml,
 			QueuedFiles: r.bs.FilesChanged(),
-		})
+		}
 	}
-	return u.stateWriter.Write(ctx, state.ResourcesEvent{Resources: state.Resources{Resources: res}})
+	resources := state.Resources{
+		Resources: res,
+		RunQueue:  append([]string(nil), st.runQueue...),
+	}
+
+	if st.runningSpan != nil {
+		resources.Running = st.runningSpan.ID()
+	}
+
+	if st.lastSpan != nil {
+		resources.Last = st.lastSpan.ID()
+	}
+
+	return u.stateWriter.Write(ctx, state.ResourcesEvent{Resources: resources})
 }
 
 func (u Upper) logBuildEvent(ctx context.Context, manifest model.Manifest, buildState BuildState) {
