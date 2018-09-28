@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"io"
 
 	"github.com/windmilleng/tilt/internal/k8s"
 )
@@ -60,4 +61,25 @@ func GetSpan(ctx context.Context) SingleSpanWriter {
 		return nil
 	}
 	return v.(SingleSpanWriter)
+}
+
+func Print(ctx context.Context, msg string) {
+	span, _ := StartSpanFromContext(ctx, "print")
+	span.LogKV("msg", msg)
+	span.Finish()
+}
+
+func Writer(ctx context.Context) io.Writer {
+	return &writer{parent: GetSpan(ctx)}
+}
+
+type writer struct {
+	parent SingleSpanWriter
+}
+
+func (w *writer) Write(p []byte) (int, error) {
+	span := w.parent.StartChild("write")
+	span.LogKV("bytes", string(p))
+	span.Finish()
+	return len(p), nil
 }

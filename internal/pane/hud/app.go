@@ -15,11 +15,13 @@ import (
 )
 
 type Hud struct {
-	resources state.Resources
-	k8s       map[string]interface{}
-	spans     map[state.SpanID]state.Span
+	resources  state.Resources
+	k8s        map[string]interface{}
+	spans      map[state.SpanID]state.Span
+	childSpans map[state.SpanID][]state.SpanID
 
-	nav navigationState
+	nav        navigationState
+	streamText string
 
 	evs       chan []state.Event
 	controlCh chan<- state.ControlEvent
@@ -29,10 +31,11 @@ type Hud struct {
 
 func NewHud(evs chan []state.Event, controlCh chan<- state.ControlEvent) (*Hud, error) {
 	return &Hud{
-		evs:       evs,
-		k8s:       make(map[string]interface{}),
-		spans:     make(map[state.SpanID]state.Span),
-		controlCh: controlCh,
+		evs:        evs,
+		k8s:        make(map[string]interface{}),
+		spans:      make(map[state.SpanID]state.Span),
+		childSpans: make(map[state.SpanID][]state.SpanID),
+		controlCh:  controlCh,
 	}, nil
 }
 
@@ -127,6 +130,19 @@ func (h *Hud) handleTiltEvents(evs []state.Event) error {
 			}
 		case state.SpanEvent:
 			h.spans[ev.Span.ID] = ev.Span
+			if ev.Span.Parent != state.NoSpanID {
+				children := h.childSpans[ev.Span.Parent]
+				seen := false
+				for _, c := range children {
+					if c == ev.Span.ID {
+						seen = true
+						break
+					}
+				}
+				if !seen {
+					h.childSpans[ev.Span.Parent] = append(children, ev.Span.ID)
+				}
+			}
 		default:
 			return fmt.Errorf("hud.HandleTiltEvents: unexpected event %T %v", ev, ev)
 		}

@@ -11,9 +11,19 @@ type pen struct {
 }
 
 func (p *pen) write(s string) {
+	width, _ := p.back.Size()
 	for _, ch := range s {
-		p.back.SetContent(p.x, p.y, ch, nil, tcell.StyleDefault)
-		p.x += 1
+		if p.x >= width {
+			p.x = 0
+			p.y += 1
+		}
+		if ch == '\n' {
+			p.x = 0
+			p.y += 1
+		} else {
+			p.back.SetContent(p.x, p.y, ch, nil, tcell.StyleDefault)
+			p.x += 1
+		}
 	}
 }
 

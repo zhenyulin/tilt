@@ -11,6 +11,7 @@ import (
 	"github.com/windmilleng/tilt/internal/k8s"
 	"github.com/windmilleng/tilt/internal/model"
 	"github.com/windmilleng/tilt/internal/output"
+	statePkg "github.com/windmilleng/tilt/internal/state"
 	"github.com/windmilleng/tilt/internal/synclet/sidecar"
 	"github.com/windmilleng/wmclient/pkg/analytics"
 	"k8s.io/api/core/v1"
@@ -43,6 +44,8 @@ func (ibd *ImageBuildAndDeployer) SetInjectSynclet(inject bool) {
 func (ibd *ImageBuildAndDeployer) BuildAndDeploy(ctx context.Context, manifest model.Manifest, state BuildState) (br BuildResult, err error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "daemon-ImageBuildAndDeployer-BuildAndDeploy")
 	defer span.Finish()
+	sspan, ctx := statePkg.StartSpanFromContext(ctx, "daemon-ImageBuildAndDeployer-BuildAndDeploy")
+	defer sspan.Finish()
 
 	startTime := time.Now()
 	defer func() {
@@ -84,6 +87,9 @@ func (ibd *ImageBuildAndDeployer) build(ctx context.Context, manifest model.Mani
 	if !state.HasImage() {
 		// No existing image to build off of, need to build from scratch
 		name := manifest.DockerfileTag
+		sspan, ctx := statePkg.StartSpanFromContext(ctx, "build-scratch")
+		sspan.LogKV("docker-tag", fmt.Sprintf("%v", manifest.DockerfileTag))
+		defer sspan.Finish()
 		output.Get(ctx).StartPipelineStep("Building from scratch: [%s]", manifest.DockerfileTag)
 		defer output.Get(ctx).EndPipelineStep()
 
@@ -110,6 +116,10 @@ func (ibd *ImageBuildAndDeployer) build(ctx context.Context, manifest model.Mani
 		output.Get(ctx).StartPipelineStep("Building from existing: [%s]", manifest.DockerfileTag)
 		defer output.Get(ctx).EndPipelineStep()
 
+		sspan, ctx := statePkg.StartSpanFromContext(ctx, "build-existing")
+		sspan.LogKV("docker-tag", fmt.Sprintf("%v", manifest.DockerfileTag))
+		defer sspan.Finish()
+
 		steps := manifest.Steps
 		ref, err := ibd.b.BuildImageFromExisting(ctx, state.LastResult.Image, cf, steps)
 		if err != nil {
@@ -132,6 +142,9 @@ func (ibd *ImageBuildAndDeployer) build(ctx context.Context, manifest model.Mani
 func (ibd *ImageBuildAndDeployer) deploy(ctx context.Context, manifest model.Manifest, n reference.NamedTagged) ([]k8s.K8sEntity, error) {
 	output.Get(ctx).StartPipelineStep("Deploying")
 	defer output.Get(ctx).EndPipelineStep()
+
+	sspan, ctx := statePkg.StartSpanFromContext(ctx, "deploy")
+	defer sspan.Finish()
 
 	output.Get(ctx).StartBuildStep("Parsing Kubernetes config YAML")
 	entities, err := k8s.ParseYAMLFromString(manifest.K8sYaml)

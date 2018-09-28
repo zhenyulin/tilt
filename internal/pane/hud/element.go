@@ -3,6 +3,7 @@ package hud
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	// "log"
@@ -134,4 +135,44 @@ func (h *Hud) renderStream(c Canvas) {
 	if span.End != (time.Time{}) {
 		p.write("done ")
 	}
+
+	width, height := c.Size()
+	sc := divideCanvas(c, 1, 1, width-2, height-2)
+
+	trace := h.gatherTrace(spanID)
+	sb := &strings.Builder{}
+	h.traceToText(0, sb, trace)
+	e := NewTextElement(sb.String())
+	e.RenderFixed(sc)
+}
+
+func (h *Hud) traceToText(indentLevel int, sb *strings.Builder, trace spanAndChildren) {
+	span := trace.span
+	indent := ""
+	for i := 0; i < indentLevel; i++ {
+		indent = indent + "  "
+	}
+	sb.WriteString(fmt.Sprintf("%vstart %v\n", indent, span.Name))
+	for k, v := range span.Fields {
+		sb.WriteString(fmt.Sprintf("%vfield %v = %v\n", indent, k, v))
+	}
+	for _, c := range trace.children {
+		h.traceToText(indentLevel+1, sb, c)
+	}
+	sb.WriteString(fmt.Sprintf("%vend   %v\n", indent, span.Name))
+}
+
+type spanAndChildren struct {
+	span     state.Span
+	children []spanAndChildren
+}
+
+func (h *Hud) gatherTrace(id state.SpanID) spanAndChildren {
+	span := h.spans[id]
+	var children []spanAndChildren
+	for _, c := range h.childSpans[id] {
+		children = append(children, h.gatherTrace(c))
+	}
+
+	return spanAndChildren{span, children}
 }

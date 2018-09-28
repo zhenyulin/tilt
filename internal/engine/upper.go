@@ -3,7 +3,6 @@ package engine
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/url"
 	"os"
 	"time"
@@ -169,8 +168,6 @@ func (u Upper) dispatch(ctx context.Context, st *internalState) error {
 		// can't start anything
 		return nil
 	}
-
-	log.Printf("starting something")
 
 	resourceName := st.runQueue[0]
 	st.runQueue = st.runQueue[1:]

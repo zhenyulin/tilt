@@ -14,6 +14,7 @@ import (
 	"github.com/windmilleng/tilt/internal/logger"
 	"github.com/windmilleng/tilt/internal/model"
 	"github.com/windmilleng/tilt/internal/output"
+	"github.com/windmilleng/tilt/internal/state"
 
 	"github.com/containerd/console"
 	"github.com/docker/cli/cli/command"
@@ -359,7 +360,7 @@ func (d *dockerImageBuilder) readDockerOutput(ctx context.Context, reader io.Rea
 	decoder := json.NewDecoder(reader)
 	var innerSpan opentracing.Span
 
-	b := newBuildkitPrinter(os.Stdout)
+	b := newBuildkitPrinter(state.Writer(ctx))
 
 	for decoder.More() {
 		if innerSpan != nil {
@@ -373,6 +374,7 @@ func (d *dockerImageBuilder) readDockerOutput(ctx context.Context, reader io.Rea
 
 		if len(message.Stream) > 0 && message.Stream != "\n" {
 			msg := strings.TrimSuffix(message.Stream, "\n")
+			state.Print(ctx, msg)
 			output.Get(ctx).Printf("%s", msg)
 			if strings.HasPrefix(msg, "Step") || strings.HasPrefix(msg, "Running") {
 				innerSpan, ctx = opentracing.StartSpanFromContext(ctx, msg)
