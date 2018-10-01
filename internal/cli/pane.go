@@ -7,8 +7,10 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -33,11 +35,20 @@ func (c *paneCmd) register() *cobra.Command {
 func (c *paneCmd) run(ctx context.Context, args []string) error {
 	fmt.Printf("hello pane\n")
 
-	ttyOut, err := os.OpenFile("/dev/tty", syscall.O_WRONLY, 0)
+	cmd := exec.Command("tty")
+	cmd.Stdin = os.Stdin
+	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return err
 	}
-	ttyIn, err := os.OpenFile("/dev/tty", syscall.O_RDONLY, 0)
+	outputString := strings.TrimRight(string(output), "\n")
+	log.Printf("hrm %q %s", outputString, err)
+
+	ttyOut, err := os.OpenFile(outputString, syscall.O_WRONLY, 0)
+	if err != nil {
+		return err
+	}
+	ttyIn, err := os.OpenFile(outputString, syscall.O_RDONLY, 0)
 	if err != nil {
 		return err
 	}
@@ -80,7 +91,10 @@ func (c *paneCmd) run(ctx context.Context, args []string) error {
 
 	if err := stream.Send(
 		&proto.PaneControl{
-			Control: &proto.PaneControl_Connect{Connect: &proto.ConnectRequest{FdSocketPath: fdSocketPath}},
+			Control: &proto.PaneControl_Connect{Connect: &proto.ConnectRequest{
+				FdSocketPath: fdSocketPath,
+				TtyPath:      outputString,
+			}},
 		}); err != nil {
 		return err
 	}

@@ -18,6 +18,7 @@ message PaneControl {
 
 message ConnectRequest {
   string fd_socket_path = 1;
+  string tty_path = 2;
 }
 
 message WindowChange {
