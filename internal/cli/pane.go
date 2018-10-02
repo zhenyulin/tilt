@@ -141,6 +141,9 @@ func UnixDial(addr string, timeout time.Duration) (net.Conn, error) {
 }
 
 func sendFDs(fdListener *net.UnixListener, fs []*os.File) error {
+	if true {
+		return nil
+	}
 	defer fdListener.Close()
 	fdConn, err := fdListener.AcceptUnix()
 	log.Printf("got a client who wants fds %v", fdConn)

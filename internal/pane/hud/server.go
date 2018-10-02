@@ -83,53 +83,69 @@ func (a *PaneServerAdapter) ConnectPane(stream proto.Pane_ConnectPaneServer) err
 		return fmt.Errorf("expected a connect msg; got %T %v", msg, msg)
 	}
 
-	fdConn, err := net.DialUnix("unix", &net.UnixAddr{Name: "", Net: "unix"}, &net.UnixAddr{Name: connectMsg.FdSocketPath, Net: "unix"})
-	if err != nil {
-		return err
-	}
+	if false {
 
-	fdConnF, err := fdConn.File()
-	if err != nil {
-		return err
-	}
-	num := 5 // stdin, stdout, stderr, readTTY, writeTTY
-	buf := make([]byte, syscall.CmsgSpace(num*4))
-	_, _, _, _, err = syscall.Recvmsg(int(fdConnF.Fd()), nil, buf, 0)
-	if err != nil {
-		return err
-	}
-
-	msgs, err := syscall.ParseSocketControlMessage(buf)
-	if err != nil {
-		return err
-	}
-
-	var fs []*os.File
-	for _, msg := range msgs {
-		fds, err := syscall.ParseUnixRights(&msg)
+		fdConn, err := net.DialUnix("unix", &net.UnixAddr{Name: "", Net: "unix"}, &net.UnixAddr{Name: connectMsg.FdSocketPath, Net: "unix"})
 		if err != nil {
 			return err
 		}
-		for _, fd := range fds {
-			fs = append(fs, os.NewFile(uintptr(fd), "/dev/null"))
+
+		fdConnF, err := fdConn.File()
+		if err != nil {
+			return err
 		}
+		num := 5 // stdin, stdout, stderr, readTTY, writeTTY
+		buf := make([]byte, syscall.CmsgSpace(num*4))
+		_, _, _, _, err = syscall.Recvmsg(int(fdConnF.Fd()), nil, buf, 0)
+		if err != nil {
+			return err
+		}
+
+		msgs, err := syscall.ParseSocketControlMessage(buf)
+		if err != nil {
+			return err
+		}
+
+		var fs []*os.File
+		for _, msg := range msgs {
+			fds, err := syscall.ParseUnixRights(&msg)
+			if err != nil {
+				return err
+			}
+			for _, fd := range fds {
+				fs = append(fs, os.NewFile(uintptr(fd), "/dev/null"))
+			}
+		}
+
+		if len(fs) != 5 {
+			return fmt.Errorf("expected 5 files; got %v", len(fs))
+		}
+
+		_, err = fmt.Fprintf(fs[1], "Hullo\n")
+		if err != nil {
+			log.Printf("whoops %v", err)
+		}
+
+		fs[0].Close()
+		fs[1].Close()
+		fs[2].Close()
+
+		fs[3].Close()
+		fs[4].Close()
 	}
-
-	if len(fs) != 5 {
-		return fmt.Errorf("expected 5 files; got %v", len(fs))
-	}
-
-	_, err = fmt.Fprintf(fs[1], "Hullo\n")
-	if err != nil {
-		log.Printf("whoops %v", err)
-	}
-
-	fs[0].Close()
-	fs[1].Close()
-	fs[2].Close()
-
 	winchCh := make(chan os.Signal)
 	streamErrCh := make(chan error)
+
+	log.Printf("hrm %v", connectMsg.TtyPath)
+	readTty, err := os.OpenFile(connectMsg.TtyPath, os.O_RDONLY, 0)
+	if err != nil {
+		return err
+	}
+
+	writeTty, err := os.OpenFile(connectMsg.TtyPath, os.O_WRONLY, 0)
+	if err != nil {
+		return err
+	}
 
 	hud, err := NewHud(evs, a.controlCh)
 	if err != nil {
@@ -138,7 +154,7 @@ func (a *PaneServerAdapter) ConnectPane(stream proto.Pane_ConnectPaneServer) err
 	hudDoneCh := make(chan error)
 	hudCtx, cancelHud := context.WithCancel(ctx)
 	go func() {
-		hudDoneCh <- hud.Run(hudCtx, fs[3], fs[4], winchCh)
+		hudDoneCh <- hud.Run(hudCtx, readTty, writeTty, winchCh)
 	}()
 
 	go func() {
