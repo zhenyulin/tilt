@@ -84,10 +84,13 @@ type dockerImage struct {
 	mounts             []mount
 	steps              []model.Step
 	entrypoint         string
-	filters            []model.PathMatcher
+	filterPaths        []string
 
 	staticDockerfilePath string
 	staticBuildPath      string
+
+	dockerignoreContents string
+	gitignoreContents    string
 }
 
 var _ skylark.Value = &dockerImage{}
@@ -178,13 +181,14 @@ func addMount(thread *skylark.Thread, fn *skylark.Builtin, args skylark.Tuple, k
 	case localPath:
 		lp = p
 	case gitRepo:
+		buildContext.dockerignoreContents = p.dockerignoreContents
+		buildContext.gitignoreContents = p.gitignoreContents
 		lp = localPath{p.basePath, p}
 	default:
 		return nil, fmt.Errorf("invalid type for src. Got %s want gitRepo OR localPath", src.Type())
 	}
 
 	buildContext.mounts = append(buildContext.mounts, mount{lp, mountPoint})
-	buildContext.filters = append(buildContext.filters, lp.repo.pathMatcher)
 
 	return skylark.None, nil
 }
@@ -232,8 +236,9 @@ func (*dockerImage) AttrNames() []string {
 }
 
 type gitRepo struct {
-	basePath    string
-	pathMatcher model.PathMatcher
+	basePath             string
+	dockerignoreContents string
+	gitignoreContents    string
 }
 
 var _ skylark.Value = gitRepo{}

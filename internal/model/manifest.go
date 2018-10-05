@@ -3,9 +3,11 @@ package model
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/docker/distribution/reference"
+	gitignore "github.com/monochromegane/go-gitignore"
 )
 
 type ManifestName string
@@ -14,10 +16,10 @@ func (m ManifestName) String() string { return string(m) }
 
 type Manifest struct {
 	// Properties for all builds.
-	Name       ManifestName
-	K8sYaml    string
-	FileFilter PathMatcher
-	DockerRef  reference.Named
+	Name        ManifestName
+	K8sYaml     string
+	FilterPaths []string
+	DockerRef   reference.Named
 
 	// Local files read while reading the Tilt configuration.
 	// If these files are changed, we should reload the manifest.
@@ -34,6 +36,9 @@ type Manifest struct {
 	// we do not expect the iterative build fields to be populated.
 	StaticDockerfile string
 	StaticBuildPath  string // the absolute path to the files
+
+	DockerignoreContents string
+	GitignoreContents    string
 }
 
 func (m Manifest) ConfigMatcher() (PathMatcher, error) {
@@ -49,11 +54,53 @@ func (m Manifest) IsStaticBuild() bool {
 }
 
 func (m Manifest) Filter() PathMatcher {
-	f := m.FileFilter
-	if f == nil {
+	if len(m.FilterPaths) == 0 {
 		return EmptyMatcher
 	}
-	return f
+
+	matcher, err := NewSimpleFileMatcher(m.FilterPaths...)
+	if err != nil {
+		return EmptyMatcher
+	}
+
+	// TODO this should respect the m.IgnoreMatcher()
+
+	return matcher
+}
+
+type gitignoreTester struct {
+	gitignoreTester gitignore.IgnoreMatcher
+}
+
+func (g gitignoreTester) Matches(f string, isDir bool) (bool, error) {
+	absPath, err := filepath.Abs(f)
+	if err != nil {
+		return false, err
+	}
+
+	if strings.HasPrefix(absPath, filepath.Join("", ".git/")) {
+		return true, nil
+	}
+
+	return g.gitignoreTester.Match(f, false), nil
+}
+
+func newGitignoreTesterFromContents(dockerignoreContents string) (PathMatcher, error) {
+	gi := gitignore.NewGitIgnoreFromReader("", strings.NewReader(dockerignoreContents))
+
+	return &gitignoreTester{
+		gitignoreTester: gi,
+	}, nil
+}
+
+func (m Manifest) IgnoreMatcher() (PathMatcher, error) {
+	m1, err := newGitignoreTesterFromContents(m.GitignoreContents)
+	if err != nil {
+		return nil, err
+	}
+	// TODO(dmiller) add dockerignore here
+
+	return NewCompositeMatcher([]PathMatcher{m1}), nil
 }
 
 func (m Manifest) LocalPaths() []string {

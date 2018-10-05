@@ -88,3 +88,12 @@ func NewRepoIgnoreTester(ctx context.Context, repoRoot string) (model.PathMatche
 	}
 	return &repoIgnoreTester{repoRoot, g}, nil
 }
+
+func NewGitignoreTesterFromContents(dockerignoreContents string) (model.PathMatcher, error) {
+	gi := gitignore.NewGitIgnoreFromReader("", strings.NewReader(dockerignoreContents))
+
+	return &repoIgnoreTester{
+		repoRoot:        "",
+		gitIgnoreTester: gi,
+	}
+}
