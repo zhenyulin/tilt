@@ -244,10 +244,7 @@ func (u Upper) maybeStartBuild(ctx context.Context, st *store.Store) {
 		ms.ConfigIsDirty = false
 	}
 
-	for f := range ms.PendingFileChanges {
-		ms.CurrentlyBuildingFileChanges = append(ms.CurrentlyBuildingFileChanges, f)
-	}
-	ms.PendingFileChanges = make(map[string]bool)
+	ms.CurrentlyBuildingFileChanges = concatAndDedupeStrings(ms.CurrentlyBuildingFileChanges, ms.PendingFileChanges)
 
 	buildState := ms.LastBuild.NewStateWithFilesChanged(ms.CurrentlyBuildingFileChanges)
 
@@ -272,6 +269,20 @@ func (u Upper) maybeStartBuild(ctx context.Context, st *store.Store) {
 
 		st.Dispatch(NewBuildCompleteAction(result, err))
 	}()
+}
+
+func concatAndDedupeStrings(a []string, b map[string]bool) []string {
+	seen := make(map[string]bool)
+	for _, s := range a {
+		seen[s] = true
+	}
+	for s, _ := range b {
+		if !seen[s] {
+			seen[s] = true
+			a = append(a, s)
+		}
+	}
+	return a
 }
 
 func (u Upper) handleCompletedBuild(ctx context.Context, engineState *store.EngineState, cb BuildCompleteAction) error {
