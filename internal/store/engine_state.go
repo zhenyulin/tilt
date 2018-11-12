@@ -7,6 +7,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/docker/distribution/reference"
 	"github.com/pkg/errors"
 	"github.com/windmilleng/tilt/internal/build"
 	"github.com/windmilleng/tilt/internal/container"
@@ -62,7 +63,7 @@ type EngineState struct {
 type ManifestState struct {
 	LastBuild    BuildResult
 	Manifest     model.Manifest
-	Pod          Pod
+	PodSet       PodSet
 	LBs          map[k8s.ServiceName]*url.URL
 	HasBeenBuilt bool
 
@@ -122,6 +123,37 @@ func NewYAMLManifestState(manifest model.YAMLManifest) *YAMLManifestState {
 	return &YAMLManifestState{
 		Manifest: manifest,
 	}
+}
+
+type PodSet struct {
+	Pods    map[k8s.PodID]*Pod
+	ImageID reference.NamedTagged
+}
+
+func (s PodSet) Len() int {
+	return len(s.Pods)
+}
+
+func (s PodSet) PodList() []Pod {
+	pods := make([]Pod, 0, len(s.Pods))
+	for _, pod := range s.Pods {
+		pods = append(pods, *pod)
+	}
+	return pods
+}
+
+func (s PodSet) BestPod() (Pod, bool) {
+	bestPod := Pod{}
+	found := false
+
+	for _, v := range s.Pods {
+		if !found || v.StartedAt.After(bestPod.StartedAt) {
+			bestPod = *v
+			found = true
+		}
+	}
+
+	return bestPod, found
 }
 
 type Pod struct {
@@ -269,6 +301,7 @@ func StateToView(s EngineState) view.View {
 			lastBuildLog = ms.LastBuildLog.String()
 		}
 
+		pod, _ := ms.PodSet.BestPod()
 		r := view.Resource{
 			Name:                  name.String(),
 			DirectoriesWatched:    relWatchDirs,
@@ -283,11 +316,11 @@ func StateToView(s EngineState) view.View {
 			PendingBuildSince:     ms.QueueEntryTime,
 			CurrentBuildEdits:     currentBuildEdits,
 			CurrentBuildStartTime: ms.CurrentBuildStartTime,
-			PodName:               ms.Pod.PodID.String(),
-			PodCreationTime:       ms.Pod.StartedAt,
-			PodStatus:             ms.Pod.Status,
-			PodRestarts:           ms.Pod.ContainerRestarts - ms.Pod.OldRestarts,
-			PodLog:                ms.Pod.Log(),
+			PodName:               pod.PodID.String(),
+			PodCreationTime:       pod.StartedAt,
+			PodStatus:             pod.Status,
+			PodRestarts:           pod.ContainerRestarts - pod.OldRestarts,
+			PodLog:                pod.Log(),
 			Endpoints:             endpoints,
 		}
 

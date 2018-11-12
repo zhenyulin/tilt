@@ -267,7 +267,7 @@ func handleBuildStarted(ctx context.Context, state *store.EngineState, action Bu
 		delete(ms.PendingFileChanges, file)
 	}
 	ms.CurrentBuildStartTime = action.StartTime
-	ms.Pod.CurrentLog = []byte{}
+	//ms.Pod.CurrentLog = []byte{}
 
 	// TODO(nick): It would be better if we reversed the relationship
 	// between CurrentlyBuilding and BuildController. BuildController should dispatch
@@ -324,7 +324,11 @@ func handleCompletedBuild(ctx context.Context, engineState *store.EngineState, c
 		ms.LastSuccessfulDeployEdits = ms.CurrentlyBuildingFileChanges
 		ms.CurrentlyBuildingFileChanges = nil
 
-		ms.Pod.OldRestarts = ms.Pod.ContainerRestarts // # of pod restarts from old code (shouldn't be reflected in HUD)
+		for key, pod := range ms.PodSet.Pods {
+			// # of pod restarts from old code (shouldn't be reflected in HUD)
+			pod.OldRestarts = pod.ContainerRestarts
+			ms.PodSet.Pods[key] = pod
+		}
 	}
 
 	if engineState.WatchMounts {
@@ -463,10 +467,10 @@ func enqueueBuild(state *store.EngineState, mn model.ManifestName) {
 // ensuring that some Pod exists on the state.
 //
 // Intended as a helper for pod-mutating events.
-func ensureManifestStateWithPod(state *store.EngineState, pod *v1.Pod) *store.ManifestState {
+func ensureManifestStateWithPod(state *store.EngineState, pod *v1.Pod) (*store.ManifestState, *store.Pod) {
 	manifestName := model.ManifestName(pod.ObjectMeta.Labels[ManifestNameLabel])
 	if manifestName == "" {
-		return nil
+		return nil, nil
 	}
 
 	podID := k8s.PodIDFromPod(pod)
@@ -477,17 +481,44 @@ func ensureManifestStateWithPod(state *store.EngineState, pod *v1.Pod) *store.Ma
 	ms, ok := state.ManifestStates[manifestName]
 	if !ok {
 		// This is OK. The user could have edited the manifest recently.
-		return nil
+		return nil, nil
 	}
 
-	// If the pod is empty, or older then the current pod, replace it.
-	if ms.Pod.PodID == "" || ms.Pod.StartedAt.Before(startedAt) {
-		ms.Pod = store.Pod{
+	imageID, err := k8s.FindImageRefMatching(pod.Spec, ms.Manifest.DockerRef())
+	if err != nil || imageID == nil {
+		// Ditto, this could happen if we get a pod from an old version of the manifest.
+		return nil, nil
+	}
+
+	// There are 4 cases:
+	// 1) This pod has an imageID we don't recognize because it's an old build
+	// 2) This pod has an imageID we don't recognize because it's a new build
+	// 3) This pod has an imageID we recognize, and we need to record it.
+	// 4) This pod has an imageID we recognize, and we've already recorded it.
+
+	// (1) + (2)
+	if ms.PodSet.ImageID == nil ||
+		ms.PodSet.ImageID.String() != imageID.String() {
+
+		bestPod, ok := ms.PodSet.BestPod()
+		isOld := ok || bestPod.StartedAt.After(startedAt)
+		if isOld {
+			// (1)
+			return nil, nil
+		}
+
+		// (2)
+		ms.PodSet = store.PodSet{
+			ImageID: imageID,
+			Pods:    make(map[k8s.PodID]*store.Pod),
+		}
+		ms.PodSet.Pods[podID] = store.Pod{
 			PodID:     podID,
 			StartedAt: startedAt,
 			Status:    status,
 			Namespace: ns,
 		}
+		return ms, &ms.PodSet.Pods[podID]
 	}
 
 	return ms

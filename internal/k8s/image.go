@@ -89,16 +89,25 @@ func (e K8sEntity) HasImage(image reference.Named) (bool, error) {
 	return false, nil
 }
 
-func PodContainsRef(pod *v1.PodSpec, ref reference.Named) (bool, error) {
+func PodContainsRef(pod v1.PodSpec, ref reference.Named) (bool, error) {
+	cRef, err := FindImageRefMatching(pod, ref)
+	if err != nil {
+		return false, err
+	}
+
+	return cRef != nil, nil
+}
+
+func FindImageRefMatching(pod v1.PodSpec, ref reference.Named) (reference.Named, error) {
 	for _, container := range pod.Containers {
-		existingRef, err := reference.ParseNormalizedNamed(container.Image)
+		cRef, err := reference.ParseNormalizedNamed(container.Image)
 		if err != nil {
-			return false, fmt.Errorf("PodContainsRef: %v", err)
+			return nil, fmt.Errorf("FindImageRefMatchingf: %v", err)
 		}
 
-		if existingRef.Name() == ref.Name() {
-			return true, nil
+		if cRef.Name() == ref.Name() {
+			return cRef, nil
 		}
 	}
-	return false, nil
+	return nil, nil
 }
