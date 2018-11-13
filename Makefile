@@ -100,3 +100,8 @@ synclet-release:
 
 release:
 	goreleaser --rm-dist
+
+docs:
+	docker build -t tilt/docs -f Dockerfile.docs .
+	docker run tilt/docs --name tilt/docs
+	docker cp tilt/docs:/src docs
