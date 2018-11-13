@@ -1,4 +1,4 @@
-.PHONY: all proto install lint test integration wire-check wire ensure
+.PHONY: all proto install lint test integration wire-check wire ensure docs
 
 all: lint errcheck verify_gofmt wire-check test
 
@@ -102,6 +102,10 @@ release:
 	goreleaser --rm-dist
 
 docs:
+	docker rm tiltdocs || exit 0
+	rm -fR docs/_build
 	docker build -t tilt/docs -f Dockerfile.docs .
-	docker run tilt/docs --name tilt/docs
-	docker cp tilt/docs:/src docs
+	docker run --name tiltdocs tilt/docs
+	docker cp tiltdocs:/src/_build docs/
+	docker rm tiltdocs
+
