@@ -450,18 +450,18 @@ func handleSkylarkErr(thread *skylark.Thread, err error) error {
 
 // GetManifestConfigsAndGlobalYAML executes the Tiltfile to create manifests for all resources and
 // a manifest representing the global yaml.
-func (t Tiltfile) GetManifestConfigsAndGlobalYAML(ctx context.Context, names ...model.ManifestName) ([]model.Manifest, model.YAMLManifest, error) {
+func (t Tiltfile) GetManifestConfigsAndGlobalYAML(ctx context.Context, names ...model.ManifestName) ([]model.Manifest, model.YAMLManifest, []string, error) {
 	var manifests []model.Manifest
 
 	gYAMLDeps, err := getGlobalYAMLDeps(t.thread)
 	if err != nil {
-		return nil, model.YAMLManifest{}, err
+		return nil, model.YAMLManifest{}, nil, err
 	}
 
 	for _, manifestName := range names {
 		curManifests, err := t.getManifestConfigsHelper(ctx, manifestName.String())
 		if err != nil {
-			return manifests, model.YAMLManifest{}, err
+			return manifests, model.YAMLManifest{}, nil, err
 		}
 
 		// // All manifests depend on global YAML, therefore all depend on its dependencies.
@@ -477,13 +477,17 @@ func (t Tiltfile) GetManifestConfigsAndGlobalYAML(ctx context.Context, names ...
 
 	gYAML, err := getGlobalYAML(t.thread)
 	if err != nil {
-		return nil, model.YAMLManifest{}, err
+		return nil, model.YAMLManifest{}, nil, err
 	}
 	globalYAML := model.NewYAMLManifest(model.GlobalYAMLManifestName, gYAML, gYAMLDeps)
 
 	// TODO(dbentley): now grab t.thread.Local(readFilesKey) and return that as config files
 
-	return manifests, globalYAML, nil
+	configFiles, err := getReadFiles(t.thread)
+	if err != nil {
+		return nil, model.YAMLManifest{}, nil, err
+	}
+	return manifests, globalYAML, configFiles, nil
 }
 
 func (t Tiltfile) getManifestConfigsHelper(ctx context.Context, manifestName string) ([]model.Manifest, error) {
@@ -512,7 +516,7 @@ func (t Tiltfile) getManifestConfigsHelper(ctx context.Context, manifestName str
 		return nil, fmt.Errorf("func '%v' is defined to take more than 0 arguments. service definitions must take 0 arguments", manifestName)
 	}
 
-	thread := t.thread
+	// thread := t.thread
 	// thread.SetLocal(readFilesKey, []string{})
 
 	val, err := manifestFunction.Call(t.thread, nil, nil)

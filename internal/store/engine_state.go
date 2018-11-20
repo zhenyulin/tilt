@@ -55,6 +55,7 @@ type EngineState struct {
 	GlobalYAMLState *YAMLManifestState
 
 	TiltfilePath             string
+	ConfigFiles              []string
 	PendingConfigFileChanges map[string]bool
 
 	// InitManifests is the list of manifest names that we were told to init from the CLI.

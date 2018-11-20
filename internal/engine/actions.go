@@ -75,6 +75,7 @@ type InitAction struct {
 	Manifests          []model.Manifest
 	GlobalYAMLManifest model.YAMLManifest
 	TiltfilePath       string
+	ConfigFiles        []string
 	ManifestNames      []model.ManifestName
 }
 
@@ -133,9 +134,10 @@ type TiltfileReloadStartedAction struct {
 func (TiltfileReloadStartedAction) Action() {}
 
 type TiltfileReloadedAction struct {
-	Manifests  []model.Manifest
-	GlobalYAML model.YAMLManifest
-	Err        error
+	Manifests   []model.Manifest
+	GlobalYAML  model.YAMLManifest
+	ConfigFiles []string
+	Err         error
 }
 
 func (TiltfileReloadedAction) Action() {}
