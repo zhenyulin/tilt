@@ -44,11 +44,13 @@ type manifestFilesChangedAction struct {
 	files        []string
 }
 
+func (manifestFilesChangedAction) Action() {}
+
 type configFilesChangedAction struct {
 	files []string
 }
 
-func (manifestFilesChangedAction) Action() {}
+func (configFilesChangeAction) Action() {}
 
 type manifestNotifyCancel struct {
 	manifest WatchableManifest
