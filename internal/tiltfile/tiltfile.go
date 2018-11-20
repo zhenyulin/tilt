@@ -470,13 +470,13 @@ func (t Tiltfile) GetManifestConfigsAndGlobalYAML(ctx context.Context, names ...
 			return manifests, model.YAMLManifest{}, err
 		}
 
-		// All manifests depend on global YAML, therefore all depend on its dependencies.
-		// TODO(maia): there's probs a better thread-magic way for each individual manifest to
-		// about files opened in the global scope, i.e. files opened when getting global YAML.
-		for i, m := range curManifests {
-			deps := append(m.ConfigFiles, gYAMLDeps...)
-			curManifests[i] = m.WithConfigFiles(deps)
-		}
+		// // All manifests depend on global YAML, therefore all depend on its dependencies.
+		// // TODO(maia): there's probs a better thread-magic way for each individual manifest to
+		// // about files opened in the global scope, i.e. files opened when getting global YAML.
+		// for i, m := range curManifests {
+		// 	deps := append(m.ConfigFiles, gYAMLDeps...)
+		// 	curManifests[i] = m.WithConfigFiles(deps)
+		// }
 
 		manifests = append(manifests, curManifests...)
 	}
@@ -635,7 +635,7 @@ func skylarkManifestToDomain(manifest *k8sManifest) (model.Manifest, error) {
 		Steps:          image.steps,
 		Entrypoint:     model.ToShellCmd(image.entrypoint),
 		Name:           model.ManifestName(manifest.name),
-		ConfigFiles:    SkylarkConfigFilesToDomain(manifest.configFiles),
+		// ConfigFiles:    SkylarkConfigFilesToDomain(manifest.configFiles),
 
 		StaticDockerfile: image.staticDockerfile.String(),
 		StaticBuildPath:  string(image.staticBuildPath.path),

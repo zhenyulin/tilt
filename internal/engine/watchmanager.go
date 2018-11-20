@@ -18,9 +18,34 @@ type WatchableManifest interface {
 	LocalRepos() []model.LocalGithubRepo
 }
 
+// configManifest makes a WatchableManifest that works just for the config files (Tiltfile, yaml, Dockerfiles, etc.)
+type tiltfileManifest struct {
+	dependencies []string
+}
+
+func (m *tiltfileManifest) Dependencies() []string {
+	return m.dependencies
+}
+
+func (m *tiltfileManifest) ManifestName() model.ManifestName {
+	return "Tiltfile"
+}
+
+func (m *tiltfileManifest) ConfigMatcher() (model.PathMatcher, error) {
+	return model.EmptyMatcher, nil
+}
+
+func (m *tiltfileManifest) LocalRepos() []model.LocalGithubRepo {
+	return nil
+}
+
 type manifestFilesChangedAction struct {
 	manifestName model.ManifestName
 	files        []string
+}
+
+type configFilesChangedAction struct {
+	files []string
 }
 
 func (manifestFilesChangedAction) Action() {}
@@ -61,16 +86,16 @@ func (w *WatchManager) diff(ctx context.Context, st store.RStore) (setup []Watch
 	for i, m := range state.ManifestStates {
 		manifestsToProcess[i] = m.Manifest
 	}
-	for n, state := range state.ManifestStates {
-		_, ok := w.manifestWatches[n]
-		if !ok {
-			setup = append(setup, state.Manifest)
+	manifestsToProcess["Tiltfile"] & tiltfileManifest{dependencies: []string{"Tiltfile"}}
+	for k, v := range manifestsToProcess {
+		if _, ok := w.manifestWatches[k]; !ok {
+			setup = append(setup, v)
 		}
-		delete(manifestsToProcess, n)
+		delete(manifestsToProcess, k)
 	}
 
-	for _, m := range manifestsToProcess {
-		teardown = append(teardown, m)
+	for _, v := range manifestsToProcess {
+		teardown = append(teardown, v)
 	}
 
 	return setup, teardown

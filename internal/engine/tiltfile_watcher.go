@@ -1,94 +1,96 @@
 package engine
 
-import (
-	"context"
+// import (
+// 	"context"
 
-	"github.com/windmilleng/tilt/internal/model"
-	"github.com/windmilleng/tilt/internal/store"
-	"github.com/windmilleng/tilt/internal/watch"
-)
+// 	"github.com/windmilleng/tilt/internal/model"
+// 	"github.com/windmilleng/tilt/internal/store"
+// 	"github.com/windmilleng/tilt/internal/watch"
+// )
 
-type TiltfileWatcher struct {
-	tiltfilePath       string
-	fsWatcherMaker     FsWatcherMaker
-	disabledForTesting bool
-	tiltfileWatcher    watch.Notify
-	cancelChan         chan struct{}
-}
+// type TiltfileWatcher struct {
+// 	tiltfilePath       string
+// 	fsWatcherMaker     FsWatcherMaker
+// 	disabledForTesting bool
+// 	tiltfileWatcher    watch.Notify
+// 	cancelChan         chan struct{}
+// }
 
-func NewTiltfileWatcher(watcherMaker FsWatcherMaker) *TiltfileWatcher {
-	return &TiltfileWatcher{
-		fsWatcherMaker: watcherMaker,
-		cancelChan:     make(chan struct{}),
-	}
-}
+// func NewTiltfileWatcher(watcherMaker FsWatcherMaker) *TiltfileWatcher {
+// 	return &TiltfileWatcher{
+// 		fsWatcherMaker: watcherMaker,
+// 		cancelChan:     make(chan struct{}),
+// 	}
+// }
 
-func (t *TiltfileWatcher) DisableForTesting(disabled bool) {
-	t.disabledForTesting = disabled
-}
+// func (t *TiltfileWatcher) DisableForTesting(disabled bool) {
+// 	t.disabledForTesting = disabled
+// }
 
-func (t *TiltfileWatcher) OnChange(ctx context.Context, st store.RStore) {
-	if t.disabledForTesting {
-		return
-	}
-	state := st.RLockState()
-	defer st.RUnlockState()
-	initManifests := state.InitManifests
+// func (t *TiltfileWatcher) OnChange(ctx context.Context, st store.RStore) {
+// 	if t.disabledForTesting {
+// 		return
+// 	}
 
-	if t.tiltfilePath != state.TiltfilePath || t.tiltfilePath == "" {
-		err := t.setupWatch(state.TiltfilePath)
-		if err != nil {
-			st.Dispatch(NewErrorAction(err))
-			return
-		}
-		go t.watchLoop(ctx, st, initManifests)
-	}
-}
+// 	state := st.RLockState()
+// 	defer st.RUnlockState()
+// 	initManifests := state.InitManifests
 
-func (t *TiltfileWatcher) setupWatch(path string) error {
-	if t.tiltfileWatcher != nil {
-		t.cancelChan <- struct{}{}
-	}
-	watcher, err := t.fsWatcherMaker()
-	if err != nil {
-		return err
-	}
+// 	if t.tiltfilePath != state.TiltfilePath || t.tiltfilePath == "" {
+// 		err := t.setupWatch(state.TiltfilePath)
+// 		if err != nil {
+// 			st.Dispatch(NewErrorAction(err))
+// 			return
+// 		}
+// 		go t.watchLoop(ctx, st, initManifests)
+// 	}
+// }
 
-	err = watcher.Add(path)
-	if err != nil {
-		return err
-	}
+// func (t *TiltfileWatcher) setupWatch(path string) error {
+// 	if t.tiltfileWatcher != nil {
+// 		t.cancelChan <- struct{}{}
+// 	}
+// 	watcher, err := t.fsWatcherMaker()
+// 	if err != nil {
+// 		return err
+// 	}
 
-	t.tiltfileWatcher = watcher
-	t.tiltfilePath = path
+// 	err = watcher.Add(path)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	return nil
-}
+// 	t.tiltfileWatcher = watcher
+// 	t.tiltfilePath = path
 
-func (t *TiltfileWatcher) watchLoop(ctx context.Context, st store.RStore, initManifests []model.ManifestName) {
-	watcher := t.tiltfileWatcher
-	for {
-		select {
-		case err, ok := <-watcher.Errors():
-			if !ok {
-				return
-			}
-			st.Dispatch(NewErrorAction(err))
-		case <-ctx.Done():
-			return
-		case <-t.cancelChan:
-			return
-		case _, ok := <-watcher.Events():
-			if !ok {
-				return
-			}
+// 	return nil
+// }
 
-			manifests, globalYAML, err := getNewManifestsFromTiltfile(ctx, initManifests)
-			st.Dispatch(TiltfileReloadedAction{
-				Manifests:  manifests,
-				GlobalYAML: globalYAML,
-				Err:        err,
-			})
-		}
-	}
-}
+// func (t *TiltfileWatcher) watchLoop(ctx context.Context, st store.RStore, initManifests []model.ManifestName) {
+// 	watcher := t.tiltfileWatcher
+// 	for {
+// 		select {
+// 		case err, ok := <-watcher.Errors():
+// 			if !ok {
+// 				return
+// 			}
+// 			st.Dispatch(NewErrorAction(err))
+// 		case <-ctx.Done():
+// 			return
+// 		case <-t.cancelChan:
+// 			return
+// 		case _, ok := <-watcher.Events():
+// 			if !ok {
+// 				return
+// 			}
+
+// 			manifests, globalYAML, configWatches, err := getNewManifestsFromTiltfile(ctx, initManifests)
+// 			st.Dispatch(TiltfileReloadedAction{
+// 				Manifests:     manifests,
+// 				GlobalYAML:    globalYAML,
+// 				ConfigWatches: configWatches,
+// 				Err:           err,
+// 			})
+// 		}
+// 	}
+// }
