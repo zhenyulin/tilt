@@ -232,7 +232,7 @@ func (t *Tiltfile) makeSkylarkCompositeManifest(thread *skylark.Thread, fn *skyl
 	for i.Next(&v) {
 		switch v := v.(type) {
 		case *skylark.Function:
-			thread.SetLocal(readFilesKey, []string{})
+			// thread.SetLocal(readFilesKey, []string{})
 			r, err := v.Call(thread, nil, nil)
 			if err != nil {
 				return nil, handleSkylarkErr(t.thread, err)
@@ -484,9 +484,11 @@ func (t Tiltfile) GetManifestConfigsAndGlobalYAML(ctx context.Context, names ...
 	// TODO(dbentley): now grab t.thread.Local(readFilesKey) and return that as config files
 
 	configFiles, err := getReadFiles(t.thread)
+	logger.Get(ctx).Infof("Hrm %q %v", configFiles, len(manifests))
 	if err != nil {
 		return nil, model.YAMLManifest{}, nil, err
 	}
+	configFiles = append(configFiles, t.filename)
 	return manifests, globalYAML, configFiles, nil
 }
 
