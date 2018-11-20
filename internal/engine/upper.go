@@ -65,7 +65,7 @@ func NewUpper(ctx context.Context, b BuildAndDeployer,
 	hud hud.HeadsUpDisplay, pw *PodWatcher, sw *ServiceWatcher,
 	st *store.Store, plm *PodLogManager, pfc *PortForwardController,
 	fwm *WatchManager, fswm FsWatcherMaker, bc *BuildController,
-	ic *ImageController, gybc *GlobalYAMLBuildController) Upper {
+	ic *ImageController, gybc *GlobalYAMLBuildController, tfw *TiltfileWatcher) Upper {
 
 	st.AddSubscriber(bc)
 	st.AddSubscriber(hud)
@@ -76,6 +76,7 @@ func NewUpper(ctx context.Context, b BuildAndDeployer,
 	st.AddSubscriber(sw)
 	st.AddSubscriber(ic)
 	st.AddSubscriber(gybc)
+	st.AddSubscriber(tfw)
 
 	return Upper{
 		b:     b,
@@ -432,7 +433,7 @@ func handleTiltfileReloadStarted(
 	state *store.EngineState,
 	event TiltfileReloadStartedAction,
 ) {
-	state.ConfigFilesChanged = make(map[bool]string)
+	state.PendingConfigFileChanges = make(map[string]bool)
 }
 
 func handleTiltfileReloaded(

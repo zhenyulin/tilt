@@ -127,8 +127,10 @@ func NewHudStoppedAction(err error) HudStoppedAction {
 }
 
 type TiltfileReloadStartedAction struct {
-	FilesChanges map[string]bool
+	FilesChanged map[string]bool
 }
+
+func (TiltfileReloadStartedAction) Action() {}
 
 type TiltfileReloadedAction struct {
 	Manifests  []model.Manifest

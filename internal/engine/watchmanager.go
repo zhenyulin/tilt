@@ -88,7 +88,9 @@ func (w *WatchManager) diff(ctx context.Context, st store.RStore) (setup []Watch
 	for i, m := range state.ManifestStates {
 		manifestsToProcess[i] = m.Manifest
 	}
-	manifestsToProcess["Tiltfile"] = &tiltfileManifest{dependencies: []string{"Tiltfile"}}
+	if len(state.ConfigFiles) > 0 {
+		manifestsToProcess["Tiltfile"] = &tiltfileManifest{dependencies: append([]string{nil}, state.ConfigFiles...)}
+	}
 	for k, v := range manifestsToProcess {
 		if _, ok := w.manifestWatches[k]; !ok {
 			setup = append(setup, v)

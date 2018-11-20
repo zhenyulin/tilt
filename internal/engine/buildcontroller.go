@@ -9,7 +9,6 @@ import (
 	"github.com/windmilleng/tilt/internal/model"
 	"github.com/windmilleng/tilt/internal/ospath"
 	"github.com/windmilleng/tilt/internal/store"
-	"github.com/windmilleng/tilt/internal/tiltfile"
 )
 
 type BuildController struct {
@@ -164,18 +163,18 @@ func (c *BuildController) logBuildEntry(ctx context.Context, entry buildEntry) {
 // 	return newManifest, globalYAML, nil
 // }
 
-func getNewManifestsFromTiltfile(ctx context.Context, names []model.ManifestName) ([]model.Manifest, model.YAMLManifest, error) {
-	// Sends any output to the CurrentBuildLog
-	t, err := tiltfile.Load(ctx, tiltfile.FileName)
-	if err != nil {
-		return []model.Manifest{}, model.YAMLManifest{}, err
-	}
-	newManifests, globalYAML, err := t.GetManifestConfigsAndGlobalYAML(ctx, names...)
-	if err != nil {
-		return []model.Manifest{}, model.YAMLManifest{}, err
-	}
+// func getNewManifestsFromTiltfile(ctx context.Context, names []model.ManifestName) ([]model.Manifest, model.YAMLManifest, error) {
+// 	// Sends any output to the CurrentBuildLog
+// 	t, err := tiltfile.Load(ctx, tiltfile.FileName)
+// 	if err != nil {
+// 		return []model.Manifest{}, model.YAMLManifest{}, err
+// 	}
+// 	newManifests, globalYAML, err := t.GetManifestConfigsAndGlobalYAML(ctx, names...)
+// 	if err != nil {
+// 		return []model.Manifest{}, model.YAMLManifest{}, err
+// 	}
 
-	return newManifests, globalYAML, nil
-}
+// 	return newManifests, globalYAML, nil
+// }
 
 var _ store.Subscriber = &BuildController{}

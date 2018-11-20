@@ -242,13 +242,7 @@ func (t *Tiltfile) makeSkylarkCompositeManifest(thread *skylark.Thread, fn *skyl
 				return nil, fmt.Errorf("composite_service: function %v returned %v %T; expected k8s_service", v.Name(), r, r)
 			}
 
-			files, err := getAndClearReadFiles(thread)
-			if err != nil {
-				return nil, err
-			}
-
 			s.name = v.Name()
-			s.configFiles = files
 
 			manifests = append(manifests, s)
 		default:
@@ -487,6 +481,8 @@ func (t Tiltfile) GetManifestConfigsAndGlobalYAML(ctx context.Context, names ...
 	}
 	globalYAML := model.NewYAMLManifest(model.GlobalYAMLManifestName, gYAML, gYAMLDeps)
 
+	// TODO(dbentley): now grab t.thread.Local(readFilesKey) and return that as config files
+
 	return manifests, globalYAML, nil
 }
 
@@ -517,17 +513,17 @@ func (t Tiltfile) getManifestConfigsHelper(ctx context.Context, manifestName str
 	}
 
 	thread := t.thread
-	thread.SetLocal(readFilesKey, []string{})
+	// thread.SetLocal(readFilesKey, []string{})
 
 	val, err := manifestFunction.Call(t.thread, nil, nil)
 	if err != nil {
 		return nil, handleSkylarkErr(t.thread, err)
 	}
 
-	files, err := getAndClearReadFiles(thread)
-	if err != nil {
-		return nil, err
-	}
+	// files, err := getAndClearReadFiles(thread)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
 	var manifests []model.Manifest
 
@@ -542,7 +538,7 @@ func (t Tiltfile) getManifestConfigsHelper(ctx context.Context, manifestName str
 			manifests = append(manifests, m)
 		}
 	case *k8sManifest:
-		manifest.configFiles = files
+		// manifest.configFiles = files
 
 		m, err := skylarkManifestToDomain(manifest)
 		if err != nil {
