@@ -126,6 +126,10 @@ func NewHudStoppedAction(err error) HudStoppedAction {
 	return HudStoppedAction{err}
 }
 
+type TiltfileReloadStartedAction struct {
+	FilesChanges map[string]bool
+}
+
 type TiltfileReloadedAction struct {
 	Manifests  []model.Manifest
 	GlobalYAML model.YAMLManifest

@@ -50,7 +50,7 @@ type configFilesChangedAction struct {
 	files []string
 }
 
-func (configFilesChangeAction) Action() {}
+func (configFilesChangedAction) Action() {}
 
 type manifestNotifyCancel struct {
 	manifest WatchableManifest
@@ -88,7 +88,7 @@ func (w *WatchManager) diff(ctx context.Context, st store.RStore) (setup []Watch
 	for i, m := range state.ManifestStates {
 		manifestsToProcess[i] = m.Manifest
 	}
-	manifestsToProcess["Tiltfile"] & tiltfileManifest{dependencies: []string{"Tiltfile"}}
+	manifestsToProcess["Tiltfile"] = &tiltfileManifest{dependencies: []string{"Tiltfile"}}
 	for k, v := range manifestsToProcess {
 		if _, ok := w.manifestWatches[k]; !ok {
 			setup = append(setup, v)

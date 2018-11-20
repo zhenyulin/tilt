@@ -154,8 +154,6 @@ var UpperReducer = store.Reducer(func(ctx context.Context, state *store.EngineSt
 		handleExitAction(state, action)
 	case manifestFilesChangedAction:
 		handleFSEvent(ctx, state, action)
-	case configFilesChangedAction:
-		handleConfigFSEvent(ctx, state, action)
 	case PodChangeAction:
 		handlePodEvent(ctx, state, action.Pod)
 	case ServiceChangeAction:
@@ -178,6 +176,8 @@ var UpperReducer = store.Reducer(func(ctx context.Context, state *store.EngineSt
 		handleGlobalYAMLApplyComplete(ctx, state, action)
 	case GlobalYAMLApplyError:
 		handleGlobalYAMLApplyError(ctx, state, action)
+	case TiltfileReloadStartedAction:
+		handleTiltfileReloadStarted(ctx, state, action)
 	case TiltfileReloadedAction:
 		handleTiltfileReloaded(ctx, state, action)
 	default:
@@ -239,17 +239,17 @@ var UpperReducer = store.Reducer(func(ctx context.Context, state *store.EngineSt
 // 	ms.ConfigIsDirty = false
 // }
 
-// func removeFromManifestsToBuild(state *store.EngineState, mn model.ManifestName) error {
-// 	for i, n := range state.ManifestsToBuild {
-// 		if n == mn {
-// 			state.ManifestsToBuild = append(state.ManifestsToBuild[:i], state.ManifestsToBuild[i+1:]...)
-// 			state.ManifestStates[mn].QueueEntryTime = time.Time{}
-// 			return nil
-// 		}
-// 	}
+func removeFromManifestsToBuild(state *store.EngineState, mn model.ManifestName) error {
+	for i, n := range state.ManifestsToBuild {
+		if n == mn {
+			state.ManifestsToBuild = append(state.ManifestsToBuild[:i], state.ManifestsToBuild[i+1:]...)
+			state.ManifestStates[mn].QueueEntryTime = time.Time{}
+			return nil
+		}
+	}
 
-// 	return fmt.Errorf("Missing manifest %s", mn)
-// }
+	return fmt.Errorf("Missing manifest %s", mn)
+}
 
 func handleBuildStarted(ctx context.Context, state *store.EngineState, action BuildStartedAction) {
 	mn := action.Manifest.Name
@@ -348,7 +348,13 @@ func handleFSEvent(
 	ctx context.Context,
 	state *store.EngineState,
 	event manifestFilesChangedAction) {
-	manifest := state.ManifestStates[event.manifestName].Manifest
+
+	if event.manifestName == "Tiltfile" {
+		for _, f := range event.files {
+			state.PendingConfigFileChanges[f] = true
+		}
+		return
+	}
 
 	// if eventContainsConfigFiles(manifest, event) {
 	// 	logger.Get(ctx).Debugf("Event contains config files")
@@ -379,15 +385,6 @@ func handleFSEvent(
 	}
 
 	enqueueBuild(state, event.manifestName)
-}
-
-func handleConfigFSEvent(
-	ctx context.Context,
-	state *store.EngineState,
-	event configFilesChangedAction) {
-	for _, f := range event.files {
-		state.PendingConfigFileChanges[f] = true
-	}
 }
 
 // func handleGlobalYAMLManifestReloaded(
@@ -430,6 +427,14 @@ func handleGlobalYAMLApplyError(
 	state.GlobalYAMLState.LastError = event.Error
 }
 
+func handleTiltfileReloadStarted(
+	ctx context.Context,
+	state *store.EngineState,
+	event TiltfileReloadStartedAction,
+) {
+	state.ConfigFilesChanged = make(map[bool]string)
+}
+
 func handleTiltfileReloaded(
 	ctx context.Context,
 	state *store.EngineState,
@@ -448,9 +453,9 @@ func handleTiltfileReloaded(
 	}
 	newDefOrder := make([]model.ManifestName, len(manifests))
 	for i, m := range manifests {
-		ms, ok := state.ManifestsState[m.ManifestName()]
+		ms, ok := state.ManifestStates[m.ManifestName()]
 		if !ok {
-			ms = &ManifestState{}
+			ms = &store.ManifestState{}
 		}
 		ms.LastManifestLoadError = nil
 		state.ManifestStates[m.ManifestName()].LastManifestLoadError = nil
