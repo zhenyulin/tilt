@@ -51,16 +51,16 @@ func (cbd *LocalContainerBuildAndDeployer) BuildAndDeploy(ctx context.Context, m
 	// of implementation of BuildAndDeploy?
 	err = manifest.Validate()
 	if err != nil {
-		return store.BuildResult{}, err
+		return store.BuildResult{}, CantHandleFailure{err}
 	}
 
 	// LocalContainerBuildAndDeployer doesn't support initial build
 	if state.IsEmpty() {
-		return store.BuildResult{}, fmt.Errorf("prev. build state is empty; container build does not support initial deploy")
+		return store.BuildResult{}, CantHandleFailure{fmt.Errorf("prev. build state is empty; container build does not support initial deploy")}
 	}
 
 	if manifest.IsStaticBuild() {
-		return store.BuildResult{}, fmt.Errorf("container build does not support static dockerfiles")
+		return store.BuildResult{}, CantHandleFailure{fmt.Errorf("container build does not support static dockerfiles")}
 	}
 
 	// Otherwise, manifest has already been deployed; try to update in the running container
@@ -97,8 +97,10 @@ func (cbd *LocalContainerBuildAndDeployer) BuildAndDeploy(ctx context.Context, m
 
 func (cbd *LocalContainerBuildAndDeployer) PostProcessBuild(ctx context.Context, result, previousResult store.BuildResult) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "LocalContainerBuildAndDeployer-PostProcessBuild")
-	span.SetTag("image", result.Image.String())
 	defer span.Finish()
+	if result.HasImage() {
+		span.SetTag("image", result.Image.String())
+	}
 
 	if previousResult.HasImage() && (!result.HasImage() || result.Image != previousResult.Image) {
 		_ = cbd.dd.ForgetImage(previousResult.Image)

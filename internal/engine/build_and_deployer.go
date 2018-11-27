@@ -30,6 +30,12 @@ type BuildAndDeployer interface {
 type BuildOrder []BuildAndDeployer
 type FallbackTester func(error) bool
 
+type CantHandleFailure struct {
+	error
+}
+
+var _ error = CantHandleFailure{}
+
 // CompositeBuildAndDeployer tries to run each builder in order.  If a builder
 // emits an error, it uses the FallbackTester to determine whether the error is
 // critical enough to stop the whole pipeline, or to fallback to the next
@@ -56,6 +62,9 @@ func (composite *CompositeBuildAndDeployer) BuildAndDeploy(ctx context.Context, 
 	var lastErr error
 	for _, builder := range composite.builders {
 		br, err := builder.BuildAndDeploy(ctx, manifest, currentState)
+		if _, ok := err.(CantHandleFailure); ok {
+			continue
+		}
 		if err == nil {
 			// TODO(maia): maybe this only needs to be called after certain builds?
 			// I.e. should be called after image build but not after a successful container build?
@@ -66,18 +75,20 @@ func (composite *CompositeBuildAndDeployer) BuildAndDeploy(ctx context.Context, 
 		if !composite.shouldFallBack(err) {
 			return store.BuildResult{}, err
 		}
+
 		logger.Get(ctx).Verbosef("falling back to next build and deploy method after error: %v", err)
 		lastErr = err
 	}
+
 	return store.BuildResult{}, lastErr
 }
 
 // A permanent error indicates that the whole build pipeline needs to stop.
 // It will never recover, even on subsequent rebuilds.
 func isPermanentError(err error) bool {
-	if _, ok := err.(*model.ValidateErr); ok {
-		return true
-	}
+	// if _, ok := err.(*model.ValidateErr); ok {
+	// 	return true
+	// }
 
 	cause := errors.Cause(err)
 	if cause == context.Canceled {
@@ -108,24 +119,25 @@ func (composite *CompositeBuildAndDeployer) PostProcessBuild(ctx context.Context
 	}
 }
 
-func DefaultBuildOrder(sbad *SyncletBuildAndDeployer, cbad *LocalContainerBuildAndDeployer, ibad *ImageBuildAndDeployer, env k8s.Env, mode UpdateMode) BuildOrder {
+func DefaultBuildOrder(sbad *SyncletBuildAndDeployer, cbad *LocalContainerBuildAndDeployer, ibad *ImageBuildAndDeployer, dcbad *DockerComposeBuildAndDeployer, env k8s.Env, mode UpdateMode) BuildOrder {
+
 	if mode == UpdateModeImage || mode == UpdateModeNaive {
-		return BuildOrder{ibad}
+		return BuildOrder{dcbad, ibad}
 	}
 
 	if mode == UpdateModeContainer {
-		return BuildOrder{cbad, ibad}
+		return BuildOrder{cbad, dcbad, ibad}
 	}
 
 	if mode == UpdateModeSynclet {
 		ibad.SetInjectSynclet(true)
-		return BuildOrder{sbad, ibad}
+		return BuildOrder{sbad, dcbad, ibad}
 	}
 
 	if env.IsLocalCluster() {
-		return BuildOrder{cbad, ibad}
+		return BuildOrder{cbad, dcbad, ibad}
 	}
 
 	ibad.SetInjectSynclet(true)
-	return BuildOrder{sbad, ibad}
+	return BuildOrder{sbad, dcbad, ibad}
 }

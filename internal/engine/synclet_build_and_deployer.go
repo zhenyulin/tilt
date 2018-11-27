@@ -48,7 +48,7 @@ func (sbd *SyncletBuildAndDeployer) BuildAndDeploy(ctx context.Context, manifest
 	// TODO(maia): proper output for this stuff
 
 	if err := sbd.canSyncletBuild(ctx, manifest, state); err != nil {
-		return store.BuildResult{}, err
+		return store.BuildResult{}, CantHandleFailure{err}
 	}
 
 	return sbd.updateViaSynclet(ctx, manifest, state)

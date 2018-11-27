@@ -6,15 +6,15 @@
 package engine
 
 import (
-	context "context"
-	wire "github.com/google/go-cloud/wire"
-	build "github.com/windmilleng/tilt/internal/build"
-	docker "github.com/windmilleng/tilt/internal/docker"
-	dockerfile "github.com/windmilleng/tilt/internal/dockerfile"
-	k8s "github.com/windmilleng/tilt/internal/k8s"
-	synclet "github.com/windmilleng/tilt/internal/synclet"
-	analytics "github.com/windmilleng/wmclient/pkg/analytics"
-	dirs "github.com/windmilleng/wmclient/pkg/dirs"
+	"context"
+	"github.com/google/go-cloud/wire"
+	"github.com/windmilleng/tilt/internal/build"
+	"github.com/windmilleng/tilt/internal/docker"
+	"github.com/windmilleng/tilt/internal/dockerfile"
+	"github.com/windmilleng/tilt/internal/k8s"
+	"github.com/windmilleng/tilt/internal/synclet"
+	"github.com/windmilleng/wmclient/pkg/analytics"
+	"github.com/windmilleng/wmclient/pkg/dirs"
 )
 
 // Injectors from wire.go:
@@ -32,12 +32,13 @@ func provideBuildAndDeployer(ctx context.Context, docker2 docker.DockerClient, k
 	dockerImageBuilder := build.NewDockerImageBuilder(docker2, console, writer, labels)
 	imageBuilder := build.DefaultImageBuilder(dockerImageBuilder)
 	cacheBuilder := build.NewCacheBuilder(docker2)
-	updateMode2, err := ProvideUpdateMode(updateMode, env)
+	engineUpdateMode, err := ProvideUpdateMode(updateMode, env)
 	if err != nil {
 		return nil, err
 	}
-	imageBuildAndDeployer := NewImageBuildAndDeployer(imageBuilder, cacheBuilder, k8s2, env, memoryAnalytics, updateMode2)
-	buildOrder := DefaultBuildOrder(syncletBuildAndDeployer, localContainerBuildAndDeployer, imageBuildAndDeployer, env, updateMode2)
+	imageBuildAndDeployer := NewImageBuildAndDeployer(imageBuilder, cacheBuilder, k8s2, env, memoryAnalytics, engineUpdateMode)
+	dockerComposeBuildAndDeployer := NewDockerComposeBuildAndDeployer()
+	buildOrder := DefaultBuildOrder(syncletBuildAndDeployer, localContainerBuildAndDeployer, imageBuildAndDeployer, dockerComposeBuildAndDeployer, env, engineUpdateMode)
 	compositeBuildAndDeployer := NewCompositeBuildAndDeployer(buildOrder, shouldFallBackToImgBuild)
 	return compositeBuildAndDeployer, nil
 }
@@ -73,6 +74,7 @@ var (
 
 var DeployerBaseWireSet = wire.NewSet(build.DefaultConsole, build.DefaultOut, wire.Value(dockerfile.Labels{}), wire.Value(UpperReducer), build.DefaultImageBuilder, build.NewCacheBuilder, build.NewDockerImageBuilder, NewImageBuildAndDeployer, build.NewContainerUpdater, build.NewContainerResolver, NewSyncletBuildAndDeployer,
 	NewLocalContainerBuildAndDeployer,
+	NewDockerComposeBuildAndDeployer,
 	DefaultBuildOrder,
 	NewDeployDiscovery, wire.Bind(new(BuildAndDeployer), new(CompositeBuildAndDeployer)), NewCompositeBuildAndDeployer,
 	ProvideUpdateMode,
