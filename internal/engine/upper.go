@@ -166,11 +166,6 @@ func (u Upper) StartForTesting(ctx context.Context, manifests []model.Manifest,
 		manifestNames = append(manifestNames, m.ManifestName())
 	}
 
-	manifests = append(manifests, model.Manifest{
-		Name:       "Tiltfile",
-		IsTiltfile: true,
-	})
-
 	u.store.Dispatch(InitAction{
 		WatchMounts:        watchMounts,
 		Manifests:          manifests,

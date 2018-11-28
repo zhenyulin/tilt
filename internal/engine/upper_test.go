@@ -15,6 +15,7 @@ import (
 
 	"github.com/windmilleng/tilt/internal/container"
 	"github.com/windmilleng/tilt/internal/hud/view"
+
 	// "github.com/windmilleng/tilt/internal/k8s/testyaml"
 	"github.com/windmilleng/tilt/internal/logger"
 
@@ -800,7 +801,7 @@ func TestHudUpdated(t *testing.T) {
 	err = f.Stop()
 	assert.Equal(t, nil, err)
 
-	assert.Equal(t, 1, len(f.hud.LastView.Resources))
+	assert.Equal(t, 2, len(f.hud.LastView.Resources))
 	rv := f.hud.LastView.Resources[0]
 	assert.Equal(t, manifest.Name, model.ManifestName(rv.Name))
 	assert.Equal(t, ".", rv.DirectoriesWatched[0])
