@@ -157,6 +157,11 @@ func loadAndGetManifests(ctx context.Context, manifestNames []model.ManifestName
 func (u Upper) StartForTesting(ctx context.Context, manifests []model.Manifest,
 	globalYAML model.YAMLManifest, watchMounts bool, tiltfilePath string) error {
 
+	manifests = append(manifests, model.Manifest{
+		Name:       "Tiltfile",
+		IsTiltfile: true,
+	})
+
 	manifestNames := make([]model.ManifestName, len(manifests))
 
 	for i, m := range manifests {
