@@ -158,16 +158,18 @@ func loadAndGetManifests(ctx context.Context, manifestNames []model.ManifestName
 func (u Upper) StartForTesting(ctx context.Context, manifests []model.Manifest,
 	globalYAML model.YAMLManifest, watchMounts bool, tiltfilePath string) error {
 
+	var manifestNames []model.ManifestName
+	for _, m := range manifests {
+		if m.ManifestName() == "Tiltfile" {
+			continue
+		}
+		manifestNames = append(manifestNames, m.ManifestName())
+	}
+
 	manifests = append(manifests, model.Manifest{
 		Name:       "Tiltfile",
 		IsTiltfile: true,
 	})
-
-	manifestNames := make([]model.ManifestName, len(manifests))
-
-	for i, m := range manifests {
-		manifestNames[i] = m.ManifestName()
-	}
 
 	u.store.Dispatch(InitAction{
 		WatchMounts:        watchMounts,
@@ -657,6 +659,7 @@ func handleInitAction(ctx context.Context, engineState *store.EngineState, actio
 	log.Printf("setting %v", engineState.TiltfilePath)
 	engineState.ConfigFiles = action.ConfigFiles
 	engineState.InitManifests = action.ManifestNames
+	log.Printf("setting initmanifests %v", engineState.InitManifests)
 	watchMounts := action.WatchMounts
 	manifests := action.Manifests
 
