@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"log"
 	"testing"
 	"time"
 
@@ -20,6 +21,7 @@ func TestBuildControllerOnePod(t *testing.T) {
 	f.Start([]model.Manifest{manifest}, true)
 
 	call := f.nextCall()
+	log.Printf("got 1")
 	assert.Equal(t, manifest, call.manifest)
 	assert.Equal(t, []string{}, call.state.FilesChanged())
 
@@ -27,6 +29,7 @@ func TestBuildControllerOnePod(t *testing.T) {
 	f.fsWatcher.events <- watch.FileEvent{Path: "main.go"}
 
 	call = f.nextCall()
+	log.Printf("got 2")
 	assert.Equal(t, "pod-id", call.state.DeployInfo.PodID.String())
 
 	err := f.Stop()

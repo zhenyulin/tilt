@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -179,7 +180,12 @@ func (u Upper) StartForTesting(ctx context.Context, manifests []model.Manifest,
 	return u.store.Loop(ctx)
 }
 
+func init() {
+	log.Printf("something")
+}
+
 var UpperReducer = store.Reducer(func(ctx context.Context, state *store.EngineState, action store.Action) {
+	// log.Printf("handling action %v %T", action, action)
 	var err error
 	switch action := action.(type) {
 	case InitAction:
@@ -648,6 +654,7 @@ func handleServiceEvent(ctx context.Context, state *store.EngineState, action Se
 
 func handleInitAction(ctx context.Context, engineState *store.EngineState, action InitAction) error {
 	engineState.TiltfilePath = action.TiltfilePath
+	log.Printf("setting %v", engineState.TiltfilePath)
 	engineState.ConfigFiles = action.ConfigFiles
 	engineState.InitManifests = action.ManifestNames
 	watchMounts := action.WatchMounts
