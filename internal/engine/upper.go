@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -317,6 +318,7 @@ func handleFSEvent(
 	state *store.EngineState,
 	event manifestFilesChangedAction) {
 
+	log.Printf("ahhhhh %+v", event)
 	if event.manifestName == ConfigsManifestName {
 		for _, f := range event.files {
 			state.PendingConfigFileChanges[f] = true

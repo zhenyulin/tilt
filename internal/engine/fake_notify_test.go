@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"log"
 	"sync"
 
 	"github.com/windmilleng/tilt/internal/watch"
@@ -20,6 +21,7 @@ func newFakeMetaWatcher() *fakeMetaWatcher {
 }
 
 func (w *fakeMetaWatcher) newSub() (watch.Notify, error) {
+	log.Printf("new sub")
 	subCh := make(chan watch.FileEvent)
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -37,6 +39,7 @@ func (w *fakeMetaWatcher) loop() {
 	for {
 		select {
 		case e, ok := <-w.events:
+			log.Printf("hrm........ %+v %v", e, ok)
 			if !ok {
 				for _, sub := range w.getSubs() {
 					close(sub)
@@ -44,6 +47,7 @@ func (w *fakeMetaWatcher) loop() {
 				return
 			}
 			for _, sub := range w.getSubs() {
+				log.Printf("sending %+v", e)
 				sub <- e
 			}
 		}
@@ -88,7 +92,12 @@ func (w *fakeWatcher) loop() {
 		}
 
 		select {
-		case e := <-w.inboundCh:
+		case e, ok := <-w.inboundCh:
+			if !ok {
+				close(w.outboundCh)
+				return
+			}
+			log.Printf("hrm %+v +%v", e, q)
 			q = append(q, e)
 		case outboundCh <- outboundE:
 			q = q[1:]
