@@ -200,6 +200,7 @@ func TestUpper_UpWatchCoalescedFileChanges(t *testing.T) {
 	for _, fileRelPath := range fileRelPaths {
 		f.fsWatcher.events <- watch.FileEvent{Path: fileRelPath}
 	}
+	time.Sleep(time.Millisecond)
 	f.timerMaker.restTimerLock.Unlock()
 
 	call = f.nextCall()
