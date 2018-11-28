@@ -15,8 +15,8 @@ import (
 
 	"github.com/windmilleng/tilt/internal/container"
 	"github.com/windmilleng/tilt/internal/hud/view"
+	"github.com/windmilleng/tilt/internal/k8s/testyaml"
 
-	// "github.com/windmilleng/tilt/internal/k8s/testyaml"
 	"github.com/windmilleng/tilt/internal/logger"
 
 	"github.com/windmilleng/tilt/internal/testutils/bufsync"
@@ -108,60 +108,28 @@ func newFakeBuildAndDeployer(t *testing.T) *fakeBuildAndDeployer {
 	}
 }
 
-// type fakeNotify struct {
-// 	events chan watch.FileEvent
-// }
+func TestUpper_Up(t *testing.T) {
+	f := newTestFixture(t)
+	defer f.TearDown()
+	manifest := f.newManifest("foobar", nil)
 
-// type smallFakeNotify struct {
-// 	paths  []string
-// 	events chan watch.FileEvent
-// 	errors chan error
-// }
+	gYaml := model.NewYAMLManifest(model.ManifestName("my-global_yaml"),
+		testyaml.BlorgBackendYAML, []string{"foo", "bar"})
+	err := f.upper.StartForTesting(f.ctx, []model.Manifest{manifest}, gYaml, false, "")
+	close(f.b.calls)
+	assert.Nil(t, err)
+	var startedManifests []model.Manifest
+	for call := range f.b.calls {
+		startedManifests = append(startedManifests, call.manifest)
+	}
+	assert.Equal(t, []model.Manifest{manifest}, startedManifests)
 
-// func (n *smallFakeNotify) Add(name string) error {
-// 	return nil
-// }
-
-// func (n *fakeNotify) Close() error {
-// 	return nil
-// }
-
-// func (n *fakeNotify) Errors() chan error {
-// 	return n.errors
-// }
-
-// func (n *fakeNotify) Events() chan watch.FileEvent {
-// 	return n.events
-// }
-
-// func newFakeNotify() *fakeNotify {
-// 	return &fakeNotify{paths: make([]string, 0), errors: make(chan error), events: make(chan watch.FileEvent)}
-// }
-
-// var _ watch.Notify = &fakeNotify{}
-
-// func TestUpper_Up(t *testing.T) {
-// 	f := newTestFixture(t)
-// 	defer f.TearDown()
-// 	manifest := f.newManifest("foobar", nil)
-
-// 	gYaml := model.NewYAMLManifest(model.ManifestName("my-global_yaml"),
-// 		testyaml.BlorgBackendYAML, []string{"foo", "bar"})
-// 	err := f.upper.StartForTesting(f.ctx, []model.Manifest{manifest}, gYaml, false, "")
-// 	close(f.b.calls)
-// 	assert.Nil(t, err)
-// 	var startedManifests []model.Manifest
-// 	for call := range f.b.calls {
-// 		startedManifests = append(startedManifests, call.manifest)
-// 	}
-// 	assert.Equal(t, []model.Manifest{manifest}, startedManifests)
-
-// 	state := f.upper.store.RLockState()
-// 	defer f.upper.store.RUnlockState()
-// 	lines := strings.Split(string(state.ManifestStates[manifest.Name].LastBuildLog), "\n")
-// 	assert.Contains(t, lines, "fake building foobar")
-// 	assert.Equal(t, gYaml, state.GlobalYAML)
-// }
+	state := f.upper.store.RLockState()
+	defer f.upper.store.RUnlockState()
+	lines := strings.Split(string(state.ManifestStates[manifest.Name].LastBuildLog), "\n")
+	assert.Contains(t, lines, "fake building foobar")
+	assert.Equal(t, gYaml, state.GlobalYAML)
+}
 
 // func TestUpper_UpWatchError(t *testing.T) {
 // 	f := newTestFixture(t)
@@ -270,6 +238,7 @@ func TestUpper_UpWatchCoalescedFileChangesHitMaxTimeout(t *testing.T) {
 	for _, fileRelPath := range fileRelPaths {
 		f.fsWatcher.events <- watch.FileEvent{Path: fileRelPath}
 	}
+	time.Sleep(time.Millisecond)
 	f.timerMaker.maxTimerLock.Unlock()
 
 	call = f.nextCall()
@@ -1409,45 +1378,33 @@ func TestUpper_PodLogs(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-// func TestInitWithGlobalYAML(t *testing.T) {
-// 	f := newTestFixture(t)
-// 	state := f.store.RLockState()
-// 	ym := model.NewYAMLManifest(model.ManifestName("global"), testyaml.BlorgBackendYAML, []string{})
-// 	state.GlobalYAML = ym
-// 	f.store.RUnlockState()
-// 	f.Start([]model.Manifest{}, true)
-// 	f.store.Dispatch(InitAction{
-// 		Manifests:          []model.Manifest{},
-// 		GlobalYAMLManifest: ym,
-// 	})
-// 	f.WaitUntil("global YAML manifest gets set on init", func(st store.EngineState) bool {
-// 		fmt.Printf("State: %+v\n", st)
-// 		fmt.Printf("k8syaml: %s\n", st.GlobalYAML.K8sYAML())
-// 		return st.GlobalYAML.K8sYAML() == testyaml.BlorgBackendYAML
-// 	})
+func TestSetGlobalYAML(t *testing.T) {
+	f := newTestFixture(t)
+	state := f.store.RLockState()
+	ym := model.NewYAMLManifest(model.ManifestName("global"), testyaml.BlorgBackendYAML, []string{})
+	state.GlobalYAML = ym
+	f.store.RUnlockState()
+	f.Start([]model.Manifest{}, true)
 
-// 	newYM := model.NewYAMLManifest(model.ManifestName("global"), testyaml.BlorgJobYAML, []string{})
-// 	f.store.Dispatch(ConfigsReloadedAction{
-// 		GlobalYAML: newYM,
-// 	})
+	newYM := model.NewYAMLManifest(model.ManifestName("global"), testyaml.BlorgJobYAML, []string{})
+	f.store.Dispatch(ConfigsReloadedAction{
+		GlobalYAML: newYM,
+	})
 
-// 	f.WaitUntil("global YAML manifest gets updated", func(st store.EngineState) bool {
-// 		return st.GlobalYAML.K8sYAML() == testyaml.BlorgJobYAML
-// 	})
-// }
+	f.WaitUntil("global YAML manifest gets updated", func(st store.EngineState) bool {
+		return st.GlobalYAML.K8sYAML() == testyaml.BlorgJobYAML
+	})
+}
 
-// func TestInitSetsTiltfilePath(t *testing.T) {
-// 	f := newTestFixture(t)
-// 	f.Start([]model.Manifest{}, true)
-// 	f.store.Dispatch(InitAction{
-// 		Manifests:    []model.Manifest{},
-// 		TiltfilePath: "/Tiltfile",
-// 	})
-// 	f.WaitUntil("tiltfile path gets set on init", func(st store.EngineState) bool {
-// 		log.Printf("checking? %v", st.TiltfilePath)
-// 		return st.TiltfilePath == "/Tiltfile"
-// 	})
-// }
+func TestInitSetsTiltfilePath(t *testing.T) {
+	f := newTestFixture(t)
+	f.Start([]model.Manifest{}, true)
+
+	f.WaitUntil("tiltfile path gets set on init", func(st store.EngineState) bool {
+		log.Printf("checking? %v", st.TiltfilePath)
+		return st.TiltfilePath == "/Tiltfile"
+	})
+}
 
 func TestHudExitNoError(t *testing.T) {
 	f := newTestFixture(t)
@@ -1596,7 +1553,7 @@ func (f *testFixture) Start(manifests []model.Manifest, watchMounts bool) {
 	)
 
 	go func() {
-		err := f.upper.StartForTesting(f.ctx, manifests, model.YAMLManifest{}, watchMounts, "")
+		err := f.upper.StartForTesting(f.ctx, manifests, model.YAMLManifest{}, watchMounts, "/Tiltfile")
 		if err != nil && err != context.Canceled {
 			// Print this out here in case the test never completes
 			log.Printf("CreateManifests failed: %v", err)
@@ -1813,6 +1770,7 @@ func (f *testFixture) LogLines() []string {
 
 func (f *testFixture) TearDown() {
 	f.TempDirFixture.TearDown()
+	close(f.fsWatcher.events)
 	f.cancel()
 }
 
