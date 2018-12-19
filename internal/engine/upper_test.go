@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -1620,6 +1621,17 @@ func TestNewMountsAreWatched(t *testing.T) {
 	})
 }
 
+func TestDockerComposeSomething(t *testing.T) {
+	f := newTestFixture(t)
+	m := f.setupHAProxy()
+
+	f.Start([]model.Manifest{
+		m,
+	}, true)
+
+	f.waitForCompletedBuildCount(1)
+}
+
 type fakeTimerMaker struct {
 	restTimerLock *sync.Mutex
 	maxTimerLock  *sync.Mutex
@@ -1675,11 +1687,16 @@ type testFixture struct {
 	bc                    *BuildController
 	fwm                   *WatchManager
 	cc                    *ConfigsController
+	originalWD            string
 
 	onchangeCh chan bool
 }
 
 func newTestFixture(t *testing.T) *testFixture {
+	originalWD, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
 	f := tempdir.NewTempDirFixture(t)
 	watcher := newFakeMultiWatcher()
 	b := newFakeBuildAndDeployer(t)
@@ -1738,6 +1755,7 @@ func newTestFixture(t *testing.T) *testFixture {
 		onchangeCh:     fSub.ch,
 		fwm:            fwm,
 		cc:             cc,
+		originalWD:     originalWD,
 	}
 }
 
@@ -2001,6 +2019,16 @@ func (f *testFixture) newManifest(name string, mounts []model.Mount) model.Manif
 	return model.Manifest{Name: model.ManifestName(name), Mounts: mounts}.WithDockerRef(ref)
 }
 
+func (f *testFixture) newDCManifest(name string, DCYAMLRaw string, dockerfileContents string) model.Manifest {
+	f.WriteFile("docker-compose.yml", DCYAMLRaw)
+	return model.Manifest{
+		Name:         model.ManifestName(name),
+		DCConfigPath: f.JoinPath("docker-compose.yml"),
+		DCYAMLRaw:    []byte(DCYAMLRaw),
+		DfRaw:        []byte(dockerfileContents),
+	}
+}
+
 func (f *testFixture) assertAllBuildsConsumed() {
 	close(f.b.calls)
 
@@ -2028,6 +2056,31 @@ func (f *testFixture) WriteConfigFiles(args ...string) {
 		filenames = append(filenames, args[i])
 	}
 	f.store.Dispatch(manifestFilesChangedAction{manifestName: ConfigsManifestName, files: filenames})
+}
+
+func (f *testFixture) setupHAProxy() model.Manifest {
+	dcp := filepath.Join(f.originalWD, "testdata", "haproxy_docker-config.yml")
+	dcpc, err := ioutil.ReadFile(dcp)
+	if err != nil {
+		f.T().Fatal(err)
+	}
+	f.TempDirFixture.WriteFile("docker-config.yml", string(dcpc))
+
+	dfp := filepath.Join(f.originalWD, "testdata", "haproxy.dockerfile")
+	dfc, err := ioutil.ReadFile(dfp)
+	if err != nil {
+		f.T().Fatal(err)
+	}
+	f.TempDirFixture.WriteFile("Dockerfile", string(dfc))
+
+	hcp := filepath.Join(f.originalWD, "testdata", "haproxy.cfg")
+	hcc, err := ioutil.ReadFile(hcp)
+	if err != nil {
+		f.T().Fatal(err)
+	}
+	f.TempDirFixture.WriteFile("haproxy.cfg", string(hcc))
+
+	return f.newDCManifest("haproxy", string(dcpc), string(dfc))
 }
 
 type fixtureSub struct {
