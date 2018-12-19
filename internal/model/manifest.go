@@ -200,7 +200,7 @@ func (m Manifest) Dependencies() []string {
 	deduped := sliceutils.DedupeStringSlice(deps)
 
 	// Sort so that any nested paths come after their parents
-	sort.Strings(deduped)
+	//	sort.Strings(deduped)
 
 	return deduped
 }
