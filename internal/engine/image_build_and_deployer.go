@@ -206,7 +206,11 @@ func (ibd *ImageBuildAndDeployer) deploy(ctx context.Context, ps *build.Pipeline
 	newK8sEntities := []k8s.K8sEntity{}
 	namespace := k8s.DefaultNamespace
 	for _, e := range entities {
-		e, err = k8s.InjectLabels(e, []k8s.LabelPair{TiltRunLabel(), {Key: ManifestNameLabel, Value: manifest.ManifestName().String()}})
+		e, err = k8s.InjectLabels(e, []k8s.LabelPair{
+			TiltRunLabel(),
+			{Key: ManifestNameLabel, Value: manifest.ManifestName().String()},
+			{Key: DeployIDLabel, Value: nowToDeployID()},
+		})
 		if err != nil {
 			return nil, "", errors.Wrap(err, "deploy")
 		}

@@ -428,33 +428,36 @@ func ensureManifestStateWithPod(state *store.EngineState, pod *v1.Pod) (*store.M
 		return nil, nil
 	}
 
-	imageID, err := k8s.FindImageNamedTaggedMatching(pod.Spec, ms.Manifest.DockerRef())
-	if err != nil || imageID == nil {
-		// Ditto, this could happen if we get a pod from an old version of the manifest.
+	deployID := pod.ObjectMeta.Labels[DeployIDLabel]
+	if deployID == "" {
 		return nil, nil
 	}
 
 	// There are 4 cases:
-	// 1) This pod has an imageID we don't recognize because it's an old build
-	// 2) This pod has an imageID we don't recognize because it's a new build
-	// 3) This pod has an imageID we recognize, and we need to record it.
-	// 4) This pod has an imageID we recognize, and we've already recorded it.
+	// 1) This pod has an deployID we don't recognize because it's an old build
+	// 2) This pod has an deployID we don't recognize because it's a new build
+	// 3) This pod has an deployID we recognize, and we need to record it.
+	// 4) This pod has an deployID we recognize, and we've already recorded it.
 
 	// (1) + (2)
-	if ms.PodSet.ImageID == nil ||
-		ms.PodSet.ImageID.String() != imageID.String() {
+	if ms.PodSet.DeployID != deployID {
+		deployTime, err := store.TimeFromDeployID(deployID)
+		if err != nil {
+			// We can't parse the time, so the deploy id was weird. Ignore.
+			return nil, nil
+		}
 
-		bestPod := ms.MostRecentPod()
-		isOld := !bestPod.Empty() && bestPod.StartedAt.After(startedAt)
-		if isOld {
+		knownDeployTime := ms.DeployTime()
+
+		if deployTime.Before(knownDeployTime) {
 			// (1)
 			return nil, nil
 		}
 
 		// (2)
 		ms.PodSet = store.PodSet{
-			ImageID: imageID,
-			Pods:    make(map[k8s.PodID]*store.Pod),
+			DeployID: deployID,
+			Pods:     make(map[k8s.PodID]*store.Pod),
 		}
 		ms.PodSet.Pods[podID] = &store.Pod{
 			PodID:     podID,
