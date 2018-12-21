@@ -3,6 +3,7 @@ package tiltfile2
 import (
 	"context"
 	"fmt"
+	"log"
 	"path/filepath"
 	"strings"
 
@@ -106,11 +107,12 @@ func (s *tiltfileState) assemble() (resourceSet, []k8s.K8sEntity, error) {
 	if err != nil {
 		return resourceSet{}, nil, err
 	}
+	log.Printf("assemble images: %v", images)
 	for _, image := range images {
-		if _, ok := s.imagesByName[image.Name()]; !ok {
-			// only expand for images we know how to build
-			continue
-		}
+		// if _, ok := s.imagesByName[image.Name()]; !ok {
+		// 	// only expand for images we know how to build
+		// 	continue
+		// }
 		target, err := s.findExpandTarget(image)
 		if err != nil {
 			return resourceSet{}, nil, err
@@ -209,7 +211,8 @@ func (s *tiltfileState) findUnresourcedImages() ([]reference.Named, error) {
 		}
 		var entityImages []reference.Named
 		for _, image := range images {
-			if _, ok := s.imagesByName[image.Name()]; ok {
+			// only consider images we know how to build
+			if _, ok := s.imagesByName[image.Name()]; ok || true {
 				entityImages = append(entityImages, image)
 			}
 		}

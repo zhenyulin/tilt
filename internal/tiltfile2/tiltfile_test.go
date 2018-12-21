@@ -396,6 +396,29 @@ docker_build('gcr.io/a', 'a')
 	f.assertYAMLManifest("a-secret")
 }
 
+func TestExpandSomething(t *testing.T) {
+	f := newFixture(t)
+	defer f.TearDown()
+	f.dockerfile("a/Dockerfile")
+
+	f.yaml("all.yaml",
+		deployment("a", image("gcr.io/a")),
+		deployment("b", image("gcr.io/b")),
+		secret("a-secret"),
+	)
+
+	f.gitInit("")
+	f.file("Tiltfile", `
+k8s_yaml('all.yaml')
+docker_build('gcr.io/a', 'a')
+`)
+
+	f.load()
+	f.assertManifest("a", db(image("gcr.io/a")), deployment("a"))
+	f.assertManifest("b", deployment("b"))
+	f.assertYAMLManifest("a-secret")
+}
+
 func TestExpandExplicit(t *testing.T) {
 	f := newFixture(t)
 	defer f.TearDown()
