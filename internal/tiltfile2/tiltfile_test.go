@@ -550,6 +550,46 @@ k8s_yaml('foo.yaml')
 	)
 }
 
+func TestGitignorePathFilter(t *testing.T) {
+	f := newFixture(t)
+	defer f.TearDown()
+
+	f.gitInit("")
+	f.file(".gitignore", ".#*")
+	f.file("Dockerfile", "FROM golang:1.10")
+	f.yaml("foo.yaml", deployment("foo", image("gcr.io/foo")))
+	f.file("Tiltfile", `
+docker_build('gcr.io/foo', '.')
+k8s_yaml('foo.yaml')
+`)
+
+	f.load("foo")
+	f.assertManifest("foo",
+		buildFilters(".#foo.yaml"),
+		fileChangeFilters(".#foo.yaml"),
+	)
+}
+
+func TestAncestorGitignorePathFilter(t *testing.T) {
+	f := newFixture(t)
+	defer f.TearDown()
+
+	f.gitInit("")
+	f.file(".gitignore", ".#*")
+	f.file("foo/Dockerfile", "FROM golang:1.10")
+	f.yaml("foo/foo.yaml", deployment("foo", image("gcr.io/foo")))
+	f.file("Tiltfile", `
+docker_build('gcr.io/foo', 'foo')
+k8s_yaml('foo/foo.yaml')
+`)
+
+	f.load("foo")
+	f.assertManifest("foo",
+		buildFilters("foo/.#foo.yaml"),
+		fileChangeFilters("foo/.#foo.yaml"),
+	)
+}
+
 func TestDockerignorePathFilter(t *testing.T) {
 	f := newFixture(t)
 	defer f.TearDown()
@@ -768,7 +808,7 @@ func (f *fixture) yaml(path string, entities ...k8sOpts) {
 
 	for _, e := range entities {
 		switch e := e.(type) {
-		case deployHelper:
+		case deploymentHelper:
 			s := testyaml.SnackYaml
 			if e.image != "" {
 				s = strings.Replace(s, testyaml.SnackImage, e.image, -1)
@@ -870,12 +910,13 @@ func (f *fixture) assertManifest(name string, opts ...interface{}) model.Manifes
 	for _, opt := range opts {
 		switch opt := opt.(type) {
 		case dbHelper:
-			caches := m.CachePaths()
-			if m.DockerRef() == nil {
+			caches := m.DockerInfo.CachePaths()
+			ref := m.DockerInfo.DockerRef
+			if ref == nil {
 				f.t.Fatalf("manifest %v has no image ref; expected %q", m.Name, opt.image.ref)
 			}
-			if m.DockerRef().Name() != opt.image.ref {
-				f.t.Fatalf("manifest %v image ref: %q; expected %q", m.Name, m.DockerRef().Name(), opt.image.ref)
+			if ref.Name() != opt.image.ref {
+				f.t.Fatalf("manifest %v image ref: %q; expected %q", m.Name, ref.Name(), opt.image.ref)
 			}
 			for _, matcher := range opt.matchers {
 				switch matcher := matcher.(type) {
@@ -890,12 +931,18 @@ func (f *fixture) assertManifest(name string, opts ...interface{}) model.Manifes
 				}
 			}
 		case fbHelper:
-			if m.DockerRef().Name() != opt.image.ref {
-				f.t.Fatalf("manifest %v image ref: %q; expected %q", m.Name, m.DockerRef().Name(), opt.image.ref)
+			ref := m.DockerInfo.DockerRef
+			if ref.Name() != opt.image.ref {
+				f.t.Fatalf("manifest %v image ref: %q; expected %q", m.Name, ref.Name(), opt.image.ref)
 			}
 
-			mounts := m.Mounts
-			steps := m.Steps
+			fbInfo := m.FastBuildInfo()
+			if fbInfo.Empty() {
+				f.t.Fatalf("expected fast build but manifest %v has no fast build info", m.Name)
+			}
+
+			mounts := fbInfo.Mounts
+			steps := fbInfo.Steps
 			for _, matcher := range opt.matchers {
 				switch matcher := matcher.(type) {
 				case addHelper:
@@ -913,20 +960,23 @@ func (f *fixture) assertManifest(name string, opts ...interface{}) model.Manifes
 					f.t.Fatalf("unknown fbHelper matcher: %T %v", matcher, matcher)
 				}
 			}
-		case deployHelper:
+		case deploymentHelper:
+			yaml := m.K8sInfo().YAML
 			found := false
-			for _, e := range f.entities(m) {
+			for _, e := range f.entities(yaml) {
 				if e.Kind.Kind == "Deployment" && f.k8sName(e) == opt.name {
 					found = true
 					break
 				}
 			}
 			if !found {
-				f.t.Fatalf("deployment %v not found in yaml %q", opt.name, m.K8sYAML())
+				f.t.Fatalf("deployment %v not found in yaml %q", opt.name, yaml)
 			}
 		case numEntitiesHelper:
-			if opt.num != len(f.entities(m)) {
-				f.t.Fatalf("manifest %v has %v entities in %v; expected %v", m.Name, len(f.entities(m)), m.K8sYAML(), opt.num)
+			yaml := m.K8sInfo().YAML
+			entities := f.entities(yaml)
+			if opt.num != len(f.entities(yaml)) {
+				f.t.Fatalf("manifest %v has %v entities in %v; expected %v", m.Name, len(entities), yaml, opt.num)
 			}
 
 		case matchPathHelper:
@@ -969,7 +1019,7 @@ func (f *fixture) assertManifest(name string, opts ...interface{}) model.Manifes
 			}
 
 		case []model.PortForward:
-			assert.Equal(f.t, opt, m.PortForwards())
+			assert.Equal(f.t, opt, m.K8sInfo().PortForwards)
 		case dcConfigPathHelper:
 			dcInfo := m.DCInfo()
 			if assert.False(f.t, dcInfo.Empty(), "expected a docker-compose manifest") {
@@ -996,9 +1046,8 @@ func (f *fixture) assertConfigFiles(filenames ...string) {
 	assert.Equal(f.t, expected, f.configFiles)
 }
 
-func (f *fixture) entities(m model.Manifest) []k8s.K8sEntity {
-	yamlText := m.K8sYAML()
-	es, err := k8s.ParseYAMLFromString(yamlText)
+func (f *fixture) entities(y string) []k8s.K8sEntity {
+	es, err := k8s.ParseYAMLFromString(y)
 	if err != nil {
 		f.t.Fatal(err)
 	}
@@ -1030,13 +1079,13 @@ func dcConfigPath(path string) dcConfigPathHelper {
 	return dcConfigPathHelper{path}
 }
 
-type deployHelper struct {
+type deploymentHelper struct {
 	name  string
 	image string
 }
 
-func deployment(name string, opts ...interface{}) deployHelper {
-	r := deployHelper{name: name}
+func deployment(name string, opts ...interface{}) deploymentHelper {
+	r := deploymentHelper{name: name}
 	for _, opt := range opts {
 		switch opt := opt.(type) {
 		case imageHelper:

@@ -24,7 +24,7 @@ type resourceSet struct {
 type tiltfileState struct {
 	// set at creation
 	ctx      context.Context
-	filename string
+	filename localPath
 
 	// added to during execution
 	configFiles    []string
@@ -40,14 +40,17 @@ type tiltfileState struct {
 }
 
 func newTiltfileState(ctx context.Context, filename string, tfRoot string) *tiltfileState {
-	return &tiltfileState{
+	lp := localPath{path: filename}
+	s := &tiltfileState{
 		ctx:          ctx,
-		filename:     filename,
+		filename:     localPath{path: filename},
 		imagesByName: make(map[string]*dockerImage),
 		k8sByName:    make(map[string]*k8sResource),
 		configFiles:  []string{filename},
 		usedImages:   make(map[string]bool),
 	}
+	s.filename = s.maybeAttachGitRepo(lp, filepath.Dir(lp.path))
+	return s
 }
 
 func (s *tiltfileState) exec() error {
@@ -56,7 +59,7 @@ func (s *tiltfileState) exec() error {
 			logger.Get(s.ctx).Infof("%s", msg)
 		},
 	}
-	_, err := skylark.ExecFile(thread, s.filename, nil, s.builtins())
+	_, err := skylark.ExecFile(thread, s.filename.path, nil, s.builtins())
 	return err
 }
 
@@ -306,21 +309,39 @@ func (s *tiltfileState) translateK8s(resources []*k8sResource) ([]model.Manifest
 			return nil, err
 		}
 
-		m = m.WithPortForwards(s.portForwardsToDomain(r)). // FIXME(dbentley)
-									WithK8sYAML(k8sYaml)
+		m = m.WithDeployInfo(model.K8sInfo{
+			YAML:         k8sYaml,
+			PortForwards: s.portForwardsToDomain(r), // FIXME(dbentley)
+		})
 
 		if r.imageRef != "" {
 			image := s.imagesByName[r.imageRef]
-			m.Mounts = s.mountsToDomain(image)
-			m.Entrypoint = model.ToShellCmd(image.entrypoint)
-			m.BaseDockerfile = image.baseDockerfile.String()
-			m.Steps = image.steps
-			m.StaticDockerfile = image.staticDockerfile.String()
-			m.StaticBuildPath = string(image.staticBuildPath.path)
-			m.StaticBuildArgs = image.staticBuildArgs
-			m = m.WithDockerRef(image.ref).
-				WithTiltFilename(image.tiltFilename).
-				WithCachePaths(image.cachePaths).
+			staticBuild := model.StaticBuild{
+				Dockerfile: image.staticDockerfile.String(),
+				BuildPath:  string(image.staticBuildPath.path),
+				BuildArgs:  image.staticBuildArgs,
+			}
+			fastBuild := model.FastBuild{
+				BaseDockerfile: image.baseDockerfile.String(),
+				Mounts:         s.mountsToDomain(image),
+				Steps:          image.steps,
+				Entrypoint:     model.ToShellCmd(image.entrypoint),
+			}
+
+			dInfo := model.DockerInfo{
+				DockerRef: image.ref,
+			}.WithCachePaths(image.cachePaths)
+
+			if !staticBuild.Empty() && !fastBuild.Empty() {
+				return nil, fmt.Errorf("cannot populate both staticBuild and fastBuild properties")
+			} else if !staticBuild.Empty() {
+				dInfo = dInfo.WithBuildDetails(staticBuild)
+			} else if !fastBuild.Empty() {
+				dInfo = dInfo.WithBuildDetails(fastBuild)
+			}
+
+			m.DockerInfo = dInfo
+			m = m.WithTiltFilename(image.tiltfilePath.path).
 				WithRepos(s.reposToDomain(image)).
 				WithDockerignores(s.dockerignoresToDomain(image))
 		}

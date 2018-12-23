@@ -17,7 +17,6 @@ import (
 	"github.com/windmilleng/tilt/internal/k8s"
 	"github.com/windmilleng/tilt/internal/logger"
 	"github.com/windmilleng/tilt/internal/model"
-	"github.com/windmilleng/tilt/internal/ospath"
 	"github.com/windmilleng/tilt/internal/store"
 	"github.com/windmilleng/tilt/internal/tiltfile2"
 	"github.com/windmilleng/tilt/internal/watch"
@@ -198,7 +197,7 @@ func handleBuildStarted(ctx context.Context, state *store.EngineState, action Bu
 	}
 
 	if dcState := ms.DCResourceState(); !dcState.Empty() {
-		ms.ResourceState = dcState.WithCurrentLog([]byte{}) // TODO(maia): when reset(/not) CrashLog for DC service?
+		ms.ResourceState = dcState.WithCurrentLog(dcState.CurrentLog)
 	}
 
 	// Keep the crash log around until we have a rebuild
@@ -296,7 +295,7 @@ func appendToTriggerQueue(state *store.EngineState, mn model.ManifestName) {
 		return
 	}
 
-	ok, _ = hasPendingChangesBefore(ms, time.Now())
+	ok, _ = ms.HasPendingChanges()
 	if !ok {
 		return
 	}
@@ -505,7 +504,7 @@ func populateContainerStatus(ctx context.Context, ms *store.ManifestState, podIn
 	podInfo.ContainerPorts = ports
 
 	forwards := PopulatePortForwards(ms.Manifest, *podInfo)
-	if len(forwards) < len(ms.Manifest.PortForwards()) {
+	if len(forwards) < len(ms.Manifest.K8sInfo().PortForwards) {
 		logger.Get(ctx).Infof(
 			"WARNING: Resource %s is using port forwards, but no container ports on pod %s",
 			ms.Manifest.Name, podInfo.PodID)
@@ -532,7 +531,7 @@ func handlePodEvent(ctx context.Context, state *store.EngineState, pod *v1.Pod) 
 	defer prunePods(ms)
 
 	// Check if the container is ready.
-	cStatus, err := k8s.ContainerMatching(pod, ms.Manifest.DockerRef())
+	cStatus, err := k8s.ContainerMatching(pod, ms.Manifest.DockerInfo.DockerRef)
 	if err != nil {
 		logger.Get(ctx).Debugf("Error matching container: %v", err)
 		return
@@ -741,30 +740,4 @@ func handleDockerComposeLogAction(state *store.EngineState, action DockerCompose
 		return
 	}
 	ms.ResourceState = dockercompose.State{CurrentLog: action.Log}
-}
-
-// Check if the filesChangedSet only contains spurious changes that
-// we don't want to rebuild on, like IDE temp/lock files.
-//
-// NOTE(nick): This isn't an ideal solution. In an ideal world, the user would
-// put everything to ignore in their gitignore/dockerignore files. This is a stop-gap
-// so they don't have a terrible experience if those files aren't there or
-// aren't in the right places.
-func onlySpuriousChanges(filesChanged map[string]time.Time) (bool, error) {
-	// If a lot of files have changed, don't treat this as spurious.
-	if len(filesChanged) > 3 {
-		return false, nil
-	}
-
-	for f := range filesChanged {
-		broken, err := ospath.IsBrokenSymlink(f)
-		if err != nil {
-			return false, err
-		}
-
-		if !broken {
-			return false, nil
-		}
-	}
-	return true, nil
 }

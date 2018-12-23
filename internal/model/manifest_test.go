@@ -7,6 +7,55 @@ import (
 	"github.com/windmilleng/tilt/internal/container"
 )
 
+var portFwd8000 = []PortForward{{LocalPort: 8080}}
+var portFwd8001 = []PortForward{{LocalPort: 8081}}
+
+var img1 = container.MustParseNamed("blorg.io/blorgdev/blorg-frontend:tilt-361d98a2d335373f")
+var img2 = container.MustParseNamed("blorg.io/blorgdev/blorg-backend:tilt-361d98a2d335373f")
+
+var buildArgs1 = DockerBuildArgs{
+	"foo": "bar",
+	"baz": "qux",
+}
+var buildArgs2 = DockerBuildArgs{
+	"foo":  "bar",
+	"beep": "boop",
+}
+
+var mount1 = Mount{
+	LocalPath:     "/foo",
+	ContainerPath: "/bar",
+}
+var mount2 = Mount{
+	LocalPath:     "/baz",
+	ContainerPath: "/beep",
+}
+
+var cmdSayHi = Cmd{Argv: []string{"bash", "-c", "echo hi"}}
+var cmdSayBye = Cmd{Argv: []string{"bash", "-c", "echo bye"}}
+var stepSayHi = Step{Cmd: cmdSayHi}
+var stepSayBye = Step{Cmd: cmdSayBye}
+var stepSayHiTriggerFoo = Step{
+	Cmd:           cmdSayHi,
+	Triggers:      []string{"foo"},
+	BaseDirectory: "/src",
+}
+var stepSayHiTriggerBar = Step{
+	Cmd:           cmdSayHi,
+	Triggers:      []string{"bar"},
+	BaseDirectory: "/src",
+}
+var stepSayHiTriggerDirA = Step{
+	Cmd:           cmdSayHi,
+	Triggers:      []string{"foo"},
+	BaseDirectory: "/dirA",
+}
+var stepSayHiTriggerDirB = Step{
+	Cmd:           cmdSayHi,
+	Triggers:      []string{"foo"},
+	BaseDirectory: "/dirB",
+}
+
 var equalitytests = []struct {
 	m1       Manifest
 	m2       Manifest
@@ -18,38 +67,100 @@ var equalitytests = []struct {
 		true,
 	},
 	{
-		Manifest{},
 		Manifest{
-			BaseDockerfile: "FROM node",
+			DockerInfo: DockerInfo{}.WithBuildDetails(
+				FastBuild{BaseDockerfile: "FROM node"}),
+		},
+		Manifest{
+			DockerInfo: DockerInfo{}.WithBuildDetails(
+				FastBuild{BaseDockerfile: "FROM nope"}),
 		},
 		false,
 	},
 	{
 		Manifest{
-			BaseDockerfile: "FROM node",
+			DockerInfo: DockerInfo{}.WithBuildDetails(
+				FastBuild{BaseDockerfile: "FROM node"}),
 		},
 		Manifest{
-			BaseDockerfile: "FROM node",
-		},
-		true,
-	},
-	{
-		Manifest{
-			Entrypoint: Cmd{Argv: []string{"echo", "hi"}},
-		},
-		Manifest{
-			Entrypoint: Cmd{Argv: []string{"echo", "hi"}},
+			DockerInfo: DockerInfo{}.WithBuildDetails(
+				FastBuild{BaseDockerfile: "FROM node"}),
 		},
 		true,
 	},
 	{
 		Manifest{
-			Entrypoint: Cmd{Argv: []string{"echo", "hi"}},
+			DockerInfo: DockerInfo{}.WithBuildDetails(
+				FastBuild{
+					Entrypoint: Cmd{Argv: []string{"echo", "hi"}},
+				}),
 		},
 		Manifest{
-			Entrypoint: Cmd{Argv: []string{"bash", "-c", "echo hi"}},
+			DockerInfo: DockerInfo{}.WithBuildDetails(
+				FastBuild{
+					Entrypoint: Cmd{Argv: []string{"echo", "hi"}},
+				}),
+		},
+		true,
+	},
+	{
+		Manifest{
+			DockerInfo: DockerInfo{}.WithBuildDetails(
+				FastBuild{
+					Entrypoint: Cmd{Argv: []string{"echo", "hi"}},
+				}),
+		},
+		Manifest{
+			DockerInfo: DockerInfo{}.WithBuildDetails(
+				FastBuild{
+					Entrypoint: Cmd{Argv: []string{"bash", "-c", "echo hi"}},
+				}),
 		},
 		false,
+	},
+	{
+		Manifest{
+			DockerInfo: DockerInfo{}.WithBuildDetails(
+				FastBuild{Mounts: []Mount{mount1}}),
+		},
+		Manifest{
+			DockerInfo: DockerInfo{}.WithBuildDetails(
+				FastBuild{Mounts: []Mount{mount1}}),
+		},
+		true,
+	},
+	{
+		Manifest{
+			DockerInfo: DockerInfo{}.WithBuildDetails(
+				FastBuild{Mounts: []Mount{mount1}}),
+		},
+		Manifest{
+			DockerInfo: DockerInfo{}.WithBuildDetails(
+				FastBuild{Mounts: []Mount{mount2}}),
+		},
+		false,
+	},
+	{
+		Manifest{
+			DockerInfo: DockerInfo{}.WithBuildDetails(
+				FastBuild{Mounts: []Mount{mount1}}),
+		},
+		Manifest{
+			DockerInfo: DockerInfo{}.WithBuildDetails(
+				FastBuild{Mounts: []Mount{mount1, mount2}}),
+		},
+		false,
+	},
+	{
+		Manifest{
+			DockerInfo: DockerInfo{}.WithBuildDetails(
+				FastBuild{Mounts: nil}),
+		},
+		Manifest{
+			DockerInfo: DockerInfo{}.WithBuildDetails(
+				FastBuild{Mounts: []Mount{}}),
+		},
+		true,
 	},
 	{
 		Manifest{
@@ -90,174 +201,127 @@ var equalitytests = []struct {
 		true,
 	},
 	{
-		Manifest{
-			portForwards: []PortForward{
-				{
-					LocalPort: 8080,
-				},
-			},
-		},
-		Manifest{
-			portForwards: []PortForward{
-				{
-					LocalPort: 8081,
-				},
-			},
-		},
+		Manifest{}.WithDeployInfo(K8sInfo{PortForwards: portFwd8000}),
+		Manifest{}.WithDeployInfo(K8sInfo{PortForwards: portFwd8001}),
 		false,
 	},
 	{
+		Manifest{}.WithDeployInfo(K8sInfo{PortForwards: portFwd8000}),
+		Manifest{}.WithDeployInfo(K8sInfo{PortForwards: portFwd8000}),
+		true,
+	},
+	{
 		Manifest{
-			portForwards: []PortForward{
-				{
-					LocalPort: 8080,
-				},
-			},
+			DockerInfo: DockerInfo{}.WithBuildDetails(
+				FastBuild{Steps: []Step{stepSayHi}},
+			),
 		},
 		Manifest{
-			portForwards: []PortForward{
-				{
-					LocalPort: 8080,
-				},
-			},
+			DockerInfo: DockerInfo{}.WithBuildDetails(
+				FastBuild{Steps: []Step{stepSayHi}},
+			),
 		},
 		true,
 	},
 	{
 		Manifest{
-			Steps: []Step{
-				Step{
-					Cmd: Cmd{Argv: []string{"bash", "-c", "hi"}},
-				},
-			},
+			DockerInfo: DockerInfo{}.WithBuildDetails(
+				FastBuild{Steps: []Step{stepSayHi}},
+			),
 		},
 		Manifest{
-			Steps: []Step{
-				Step{
-					Cmd: Cmd{Argv: []string{"bash", "-c", "hi"}},
-				},
-			},
+			DockerInfo: DockerInfo{}.WithBuildDetails(
+				FastBuild{Steps: []Step{stepSayBye}},
+			),
+		},
+		false,
+	},
+	{
+		Manifest{
+			DockerInfo: DockerInfo{}.WithBuildDetails(
+				FastBuild{Steps: []Step{stepSayHiTriggerFoo}},
+			),
+		},
+		Manifest{
+			DockerInfo: DockerInfo{}.WithBuildDetails(
+				FastBuild{Steps: []Step{stepSayHiTriggerFoo}},
+			),
 		},
 		true,
 	},
 	{
 		Manifest{
-			Steps: []Step{
-				Step{
-					Cmd: Cmd{Argv: []string{"bash", "-c", "hi"}},
-				},
-			},
+			DockerInfo: DockerInfo{}.WithBuildDetails(
+				FastBuild{Steps: []Step{stepSayHiTriggerFoo}},
+			),
 		},
 		Manifest{
-			Steps: []Step{
-				Step{
-					Cmd: Cmd{Argv: []string{"bash", "-c", "hello"}},
-				},
-			},
+			DockerInfo: DockerInfo{}.WithBuildDetails(
+				FastBuild{Steps: []Step{stepSayHiTriggerBar}}),
 		},
 		false,
 	},
 	{
 		Manifest{
-			Steps: []Step{
-				Step{
-					Cmd:           Cmd{Argv: []string{"bash", "-c", "hi"}},
-					Triggers:      []string{"foo"},
-					BaseDirectory: "/src",
-				},
-			},
+			DockerInfo: DockerInfo{}.WithBuildDetails(
+				FastBuild{Steps: []Step{stepSayHiTriggerDirA}},
+			),
 		},
 		Manifest{
-			Steps: []Step{
-				Step{
-					Cmd:           Cmd{Argv: []string{"bash", "-c", "hi"}},
-					Triggers:      []string{"foo"},
-					BaseDirectory: "/src",
-				},
-			},
+			DockerInfo: DockerInfo{}.WithBuildDetails(
+				FastBuild{Steps: []Step{stepSayHiTriggerDirB}},
+			),
 		},
+		false,
+	},
+	{
+		Manifest{DockerInfo: DockerInfo{}.WithBuildDetails(StaticBuild{Dockerfile: "FROM foo"})},
+		Manifest{DockerInfo: DockerInfo{}.WithBuildDetails(StaticBuild{Dockerfile: "FROM bar"})},
+		false,
+	},
+	{
+		Manifest{DockerInfo: DockerInfo{}.WithBuildDetails(StaticBuild{Dockerfile: "FROM foo"})},
+		Manifest{DockerInfo: DockerInfo{}.WithBuildDetails(StaticBuild{Dockerfile: "FROM foo"})},
 		true,
 	},
 	{
-		Manifest{
-			Steps: []Step{
-				Step{
-					Cmd:           Cmd{Argv: []string{"bash", "-c", "hi"}},
-					Triggers:      []string{"bar"},
-					BaseDirectory: "/src",
-				},
-			},
-		},
-		Manifest{
-			Steps: []Step{
-				Step{
-					Cmd:           Cmd{Argv: []string{"bash", "-c", "hi"}},
-					Triggers:      []string{"foo"},
-					BaseDirectory: "/src",
-				},
-			},
-		},
+		Manifest{DockerInfo: DockerInfo{}.WithBuildDetails(StaticBuild{BuildPath: "foo/bar"})},
+		Manifest{DockerInfo: DockerInfo{}.WithBuildDetails(StaticBuild{BuildPath: "foo/bar/baz"})},
 		false,
 	},
 	{
-		Manifest{
-			Steps: []Step{
-				Step{
-					Cmd:           Cmd{Argv: []string{"bash", "-c", "hi"}},
-					Triggers:      []string{"foo"},
-					BaseDirectory: "/src1",
-				},
-			},
-		},
-		Manifest{
-			Steps: []Step{
-				Step{
-					Cmd:           Cmd{Argv: []string{"bash", "-c", "hi"}},
-					Triggers:      []string{"foo"},
-					BaseDirectory: "/src2",
-				},
-			},
-		},
-		false,
-	},
-	{
-		Manifest{
-			StaticBuildArgs: DockerBuildArgs{
-				"foo":  "bar",
-				"baz:": "qux",
-			},
-		},
-		Manifest{
-			StaticBuildArgs: DockerBuildArgs{
-				"foo":  "bar",
-				"baz:": "quz",
-			},
-		},
-		false,
-	},
-	{
-		Manifest{
-			StaticBuildArgs: DockerBuildArgs{
-				"foo":  "bar",
-				"baz:": "qux",
-			},
-		},
-		Manifest{
-			StaticBuildArgs: DockerBuildArgs{
-				"foo":  "bar",
-				"baz:": "qux",
-			},
-		},
+		Manifest{DockerInfo: DockerInfo{}.WithBuildDetails(StaticBuild{BuildPath: "foo/bar"})},
+		Manifest{DockerInfo: DockerInfo{}.WithBuildDetails(StaticBuild{BuildPath: "foo/bar"})},
 		true,
 	},
 	{
-		Manifest{cachePaths: []string{"foo"}},
-		Manifest{},
+		Manifest{DockerInfo: DockerInfo{}.WithBuildDetails(StaticBuild{BuildArgs: buildArgs1})},
+		Manifest{DockerInfo: DockerInfo{}.WithBuildDetails(StaticBuild{BuildArgs: buildArgs2})},
 		false,
 	},
 	{
-		Manifest{cachePaths: []string{"foo"}},
-		Manifest{cachePaths: []string{"foo"}},
+		Manifest{DockerInfo: DockerInfo{}.WithBuildDetails(StaticBuild{BuildArgs: buildArgs1})},
+		Manifest{DockerInfo: DockerInfo{}.WithBuildDetails(StaticBuild{BuildArgs: buildArgs1})},
+		true,
+	},
+	{
+		Manifest{DockerInfo: DockerInfo{cachePaths: []string{"foo"}}},
+		Manifest{DockerInfo: DockerInfo{cachePaths: []string{"bar"}}},
+		false,
+	},
+	{
+		Manifest{DockerInfo: DockerInfo{cachePaths: []string{"foo"}}},
+		Manifest{DockerInfo: DockerInfo{cachePaths: []string{"foo"}}},
+		true,
+	},
+	{
+		Manifest{DockerInfo: DockerInfo{DockerRef: img1}},
+		Manifest{DockerInfo: DockerInfo{DockerRef: img2}},
+		false,
+	},
+	{
+		Manifest{DockerInfo: DockerInfo{DockerRef: img1}},
+		Manifest{DockerInfo: DockerInfo{DockerRef: img1}},
 		true,
 	},
 	{
@@ -300,6 +364,16 @@ var equalitytests = []struct {
 		Manifest{}.WithDeployInfo(DCInfo{DfRaw: []byte("goodbye world")}),
 		false,
 	},
+	{
+		Manifest{}.WithDeployInfo(K8sInfo{YAML: "hello world"}),
+		Manifest{}.WithDeployInfo(K8sInfo{YAML: "hello world"}),
+		true,
+	},
+	{
+		Manifest{}.WithDeployInfo(K8sInfo{YAML: "hello world"}),
+		Manifest{}.WithDeployInfo(K8sInfo{YAML: "goodbye world"}),
+		false,
+	},
 }
 
 func TestManifestEquality(t *testing.T) {
@@ -313,18 +387,18 @@ func TestManifestEquality(t *testing.T) {
 }
 
 func TestManifestValidateMountRelativePath(t *testing.T) {
-	mounts := []Mount{
-		Mount{
-			LocalPath:     "./hello",
-			ContainerPath: "/src",
+	fbInfo := FastBuild{
+		Mounts: []Mount{
+			Mount{
+				LocalPath:     "./hello",
+				ContainerPath: "/src",
+			},
 		},
 	}
+
 	manifest := Manifest{
-		k8sYaml:        "yamlll",
-		Name:           "test",
-		dockerRef:      container.MustParseNamedTagged("gcr.io/some-project-162817/sancho:deadbeef"),
-		BaseDockerfile: "FROM node",
-		Mounts:         mounts,
+		Name:       "test",
+		DockerInfo: DockerInfo{}.WithBuildDetails(fbInfo),
 	}
 	err := manifest.Validate()
 
@@ -332,22 +406,9 @@ func TestManifestValidateMountRelativePath(t *testing.T) {
 		assert.Contains(t, err.Error(), "must be an absolute path")
 	}
 
-	manifest.Mounts[0].LocalPath = "/abs/path/hello"
+	fbInfo.Mounts[0].LocalPath = "/abs/path/hello"
+	manifest.DockerInfo = DockerInfo{}.WithBuildDetails(fbInfo)
 	err = manifest.Validate()
 	assert.Nil(t, err)
 
-}
-
-func TestSetPortForwards(t *testing.T) {
-	m := Manifest{
-		Name: "test",
-	}
-
-	m2 := m.WithPortForwards([]PortForward{
-		PortForward{
-			LocalPort: 8080,
-		},
-	})
-
-	assert.Equal(t, 8080, m2.PortForwards()[0].LocalPort)
 }

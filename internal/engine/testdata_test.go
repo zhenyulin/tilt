@@ -21,15 +21,18 @@ RUN go install github.com/windmilleng/sancho
 ENTRYPOINT /go/bin/sancho
 `
 
+type pather interface {
+	Path() string
+}
+
 var SanchoRef, _ = reference.ParseNormalizedNamed("gcr.io/some-project-162817/sancho")
 
-func NewSanchoManifest() model.Manifest {
-	m := model.Manifest{
-		Name:           "sancho",
+func NewSanchoFastBuildManifest(fixture pather) model.Manifest {
+	fbInfo := model.FastBuild{
 		BaseDockerfile: SanchoBaseDockerfile,
 		Mounts: []model.Mount{
 			model.Mount{
-				LocalPath:     "/src/sancho",
+				LocalPath:     fixture.Path(),
 				ContainerPath: "/go/src/github.com/windmilleng/sancho",
 			},
 		},
@@ -38,22 +41,39 @@ func NewSanchoManifest() model.Manifest {
 		}),
 		Entrypoint: model.Cmd{Argv: []string{"/go/bin/sancho"}},
 	}
+	m := model.Manifest{
+		Name: "sancho",
+		DockerInfo: model.DockerInfo{
+			DockerRef: SanchoRef,
+		}.WithBuildDetails(fbInfo),
+	}
 
-	m = m.WithDockerRef(SanchoRef).WithK8sYAML(SanchoYAML)
+	m = m.WithDeployInfo(model.K8sInfo{YAML: SanchoYAML})
 
 	return m
+}
+
+func NewSanchoFastBuildManifestWithCache(fixture pather, paths []string) model.Manifest {
+	manifest := NewSanchoFastBuildManifest(fixture)
+	manifest.DockerInfo = manifest.DockerInfo.WithCachePaths(paths)
+	return manifest
 }
 
 func NewSanchoStaticManifest() model.Manifest {
 	m := model.Manifest{
-		Name:             "sancho",
-		StaticDockerfile: SanchoStaticDockerfile,
-		StaticBuildPath:  "/path/to/build",
-	}
-
-	m = m.WithDockerRef(SanchoRef).WithK8sYAML(SanchoYAML)
+		Name: "sancho",
+		DockerInfo: model.DockerInfo{
+			DockerRef: SanchoRef,
+		}.WithBuildDetails(model.StaticBuild{
+			Dockerfile: SanchoStaticDockerfile,
+			BuildPath:  "/path/to/build",
+		}),
+	}.WithDeployInfo(model.K8sInfo{YAML: SanchoYAML})
 	return m
 }
 
-var SanchoManifest = NewSanchoManifest()
-var SanchoStaticManifest = NewSanchoStaticManifest()
+func NewSanchoStaticManifestWithCache(paths []string) model.Manifest {
+	manifest := NewSanchoStaticManifest()
+	manifest.DockerInfo = manifest.DockerInfo.WithCachePaths(paths)
+	return manifest
+}

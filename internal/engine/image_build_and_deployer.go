@@ -22,12 +22,6 @@ import (
 	"k8s.io/api/core/v1"
 )
 
-type deployableImageManifest interface {
-	K8sYAML() string
-	ManifestName() model.ManifestName
-	DockerRef() reference.Named
-}
-
 var _ BuildAndDeployer = &ImageBuildAndDeployer{}
 
 type ImageBuildAndDeployer struct {
@@ -87,7 +81,7 @@ func (ibd *ImageBuildAndDeployer) BuildAndDeploy(ctx context.Context, manifest m
 	ps := build.NewPipelineState(ctx, numStages)
 	defer func() { ps.End(ctx, err) }()
 
-	err = manifest.ValidateK8sManifest()
+	err = manifest.ValidateDockerK8sManifest()
 	if err != nil {
 		return store.BuildResult{}, err
 	}
@@ -115,18 +109,20 @@ func (ibd *ImageBuildAndDeployer) BuildAndDeploy(ctx context.Context, manifest m
 func (ibd *ImageBuildAndDeployer) build(ctx context.Context, manifest model.Manifest, state store.BuildState, ps *build.PipelineState) (reference.NamedTagged, error) {
 	var n reference.NamedTagged
 
-	name := manifest.DockerRef()
-	if manifest.IsStaticBuild() {
+	dInfo := manifest.DockerInfo
+	name := dInfo.DockerRef
+
+	cacheRef, err := ibd.fetchCache(ctx, dInfo.DockerRef, dInfo.CachePaths())
+	if err != nil {
+		return nil, err
+	}
+
+	if sbInfo := manifest.StaticBuildInfo(); !sbInfo.Empty() {
 		ps.StartPipelineStep(ctx, "Building Dockerfile: [%s]", name)
 		defer ps.EndPipelineStep(ctx)
 
-		cacheRef, err := ibd.fetchCache(ctx, manifest)
-		if err != nil {
-			return nil, err
-		}
-
 		df := ibd.staticDockerfile(manifest, cacheRef)
-		ref, err := ibd.b.BuildDockerfile(ctx, ps, name, df, manifest.StaticBuildPath, ignore.CreateBuildContextFilter(manifest), manifest.StaticBuildArgs)
+		ref, err := ibd.b.BuildDockerfile(ctx, ps, name, df, sbInfo.BuildPath, ignore.CreateBuildContextFilter(manifest), sbInfo.BuildArgs)
 
 		if err != nil {
 			return nil, err
@@ -135,46 +131,48 @@ func (ibd *ImageBuildAndDeployer) build(ctx context.Context, manifest model.Mani
 
 		go ibd.maybeCreateCacheFrom(ctx, ref, state, manifest, cacheRef)
 
-	} else if !state.HasImage() || ibd.updateMode == UpdateModeNaive {
-		// No existing image to build off of, need to build from scratch
-		ps.StartPipelineStep(ctx, "Building from scratch: [%s]", name)
-		defer ps.EndPipelineStep(ctx)
+	} else if fbInfo := manifest.FastBuildInfo(); !fbInfo.Empty() {
+		if !state.HasImage() || ibd.updateMode == UpdateModeNaive {
+			// No existing image to build off of, need to build from scratch
+			ps.StartPipelineStep(ctx, "Building from scratch: [%s]", name)
+			defer ps.EndPipelineStep(ctx)
 
-		cacheRef, err := ibd.fetchCache(ctx, manifest)
-		if err != nil {
-			return nil, err
+			df := ibd.baseDockerfile(fbInfo, cacheRef, manifest.DockerInfo.CachePaths())
+			steps := fbInfo.Steps
+			ref, err := ibd.b.BuildImageFromScratch(ctx, ps, name, df, fbInfo.Mounts, ignore.CreateBuildContextFilter(manifest), steps, fbInfo.Entrypoint)
+
+			if err != nil {
+				return nil, err
+			}
+			n = ref
+			go ibd.maybeCreateCacheFrom(ctx, ref, state, manifest, cacheRef)
+
+		} else {
+			// We have an existing image, can do an iterative build
+			changed, err := state.FilesChangedSinceLastResultImage()
+			if err != nil {
+				return nil, err
+			}
+
+			cf, err := build.FilesToPathMappings(changed, fbInfo.Mounts)
+			if err != nil {
+				return nil, err
+			}
+
+			ps.StartPipelineStep(ctx, "Building from existing: [%s]", name)
+			defer ps.EndPipelineStep(ctx)
+
+			steps := fbInfo.Steps
+			ref, err := ibd.b.BuildImageFromExisting(ctx, ps, state.LastResult.Image, cf, ignore.CreateBuildContextFilter(manifest), steps)
+			if err != nil {
+				return nil, err
+			}
+			n = ref
 		}
-
-		df := ibd.baseDockerfile(manifest, cacheRef)
-		steps := manifest.Steps
-		ref, err := ibd.b.BuildImageFromScratch(ctx, ps, name, df, manifest.Mounts, ignore.CreateBuildContextFilter(manifest), steps, manifest.Entrypoint)
-
-		if err != nil {
-			return nil, err
-		}
-		n = ref
-		go ibd.maybeCreateCacheFrom(ctx, ref, state, manifest, cacheRef)
-
 	} else {
-		changed, err := state.FilesChangedSinceLastResultImage()
-		if err != nil {
-			return nil, err
-		}
-
-		cf, err := build.FilesToPathMappings(changed, manifest.Mounts)
-		if err != nil {
-			return nil, err
-		}
-
-		ps.StartPipelineStep(ctx, "Building from existing: [%s]", name)
-		defer ps.EndPipelineStep(ctx)
-
-		steps := manifest.Steps
-		ref, err := ibd.b.BuildImageFromExisting(ctx, ps, state.LastResult.Image, cf, ignore.CreateBuildContextFilter(manifest), steps)
-		if err != nil {
-			return nil, err
-		}
-		n = ref
+		// Theoretically this should never trip b/c we `validate` the manifest beforehand...?
+		// If we get here, something is very wrong.
+		return nil, fmt.Errorf("manifest %q has no valid buildDetails (neither StaticBuildInfo nor FastBuildInfo)", manifest.Name)
 	}
 
 	if !ibd.canSkipPush() {
@@ -189,7 +187,15 @@ func (ibd *ImageBuildAndDeployer) build(ctx context.Context, manifest model.Mani
 }
 
 // Returns: the entities deployed and the namespace of the pod with the given image name/tag.
-func (ibd *ImageBuildAndDeployer) deploy(ctx context.Context, ps *build.PipelineState, manifest deployableImageManifest, ref reference.NamedTagged) ([]k8s.K8sEntity, k8s.Namespace, error) {
+func (ibd *ImageBuildAndDeployer) deploy(ctx context.Context, ps *build.PipelineState, manifest model.Manifest, ref reference.NamedTagged) ([]k8s.K8sEntity, k8s.Namespace, error) {
+	k8sInfo := manifest.K8sInfo()
+	if k8sInfo.Empty() {
+		// If a non-yaml manifest reaches this code, something is wrong.
+		// If we change BaD structure such that that might reasonably happen,
+		// this should be a `RedirectToNextBuilder` error.
+		return nil, "", fmt.Errorf("manifest %s has no k8s deploy info", manifest.Name)
+	}
+
 	ps.StartPipelineStep(ctx, "Deploying")
 	defer ps.EndPipelineStep(ctx)
 
@@ -197,7 +203,7 @@ func (ibd *ImageBuildAndDeployer) deploy(ctx context.Context, ps *build.Pipeline
 
 	// TODO(nick): The parsed YAML should probably be a part of the model?
 	// It doesn't make much sense to re-parse it and inject labels on every deploy.
-	entities, err := k8s.ParseYAMLFromString(manifest.K8sYAML())
+	entities, err := k8s.ParseYAMLFromString(k8sInfo.YAML)
 	if err != nil {
 		return nil, "", err
 	}
@@ -256,7 +262,7 @@ func (ibd *ImageBuildAndDeployer) deploy(ctx context.Context, ps *build.Pipeline
 	}
 
 	if ref != nil && !replacedAny {
-		return nil, "", fmt.Errorf("Docker image missing from yaml: %s", manifest.DockerRef())
+		return nil, "", fmt.Errorf("Docker image missing from yaml: %s", ref)
 	}
 
 	err = ibd.k8sClient.Upsert(ctx, newK8sEntities)
@@ -279,8 +285,8 @@ func (ibd *ImageBuildAndDeployer) PostProcessBuild(ctx context.Context, result, 
 	return
 }
 
-func (ibd *ImageBuildAndDeployer) fetchCache(ctx context.Context, manifest model.Manifest) (reference.NamedTagged, error) {
-	return ibd.cacheBuilder.FetchCache(ctx, manifest.DockerRef(), manifest.CachePaths())
+func (ibd *ImageBuildAndDeployer) fetchCache(ctx context.Context, ref reference.Named, cachePaths []string) (reference.NamedTagged, error) {
+	return ibd.cacheBuilder.FetchCache(ctx, ref, cachePaths)
 }
 
 func (ibd *ImageBuildAndDeployer) maybeCreateCacheFrom(ctx context.Context, sourceRef reference.NamedTagged, state store.BuildState, manifest model.Manifest, oldCacheRef reference.NamedTagged) {
@@ -294,29 +300,34 @@ func (ibd *ImageBuildAndDeployer) maybeCreateCacheFrom(ctx context.Context, sour
 		return
 	}
 
-	baseDockerfile := dockerfile.Dockerfile(manifest.BaseDockerfile)
-	if manifest.IsStaticBuild() {
-		staticDockerfile := dockerfile.Dockerfile(manifest.StaticDockerfile)
+	baseDockerfile := dockerfile.Dockerfile(manifest.FastBuildInfo().BaseDockerfile)
+	var buildArgs model.DockerBuildArgs
+
+	if sbInfo := manifest.StaticBuildInfo(); !sbInfo.Empty() {
+		staticDockerfile := dockerfile.Dockerfile(sbInfo.Dockerfile)
 		ok := true
 		baseDockerfile, _, ok = staticDockerfile.SplitIntoBaseDockerfile()
 		if !ok {
 			return
 		}
+
+		buildArgs = sbInfo.BuildArgs
 	}
 
-	err := ibd.cacheBuilder.CreateCacheFrom(ctx, baseDockerfile, sourceRef, manifest.CachePaths(), manifest.StaticBuildArgs)
+	err := ibd.cacheBuilder.CreateCacheFrom(ctx, baseDockerfile, sourceRef,
+		manifest.DockerInfo.CachePaths(), buildArgs)
 	if err != nil {
 		logger.Get(ctx).Debugf("Could not create cache: %v", err)
 	}
 }
 
 func (ibd *ImageBuildAndDeployer) staticDockerfile(manifest model.Manifest, cacheRef reference.NamedTagged) dockerfile.Dockerfile {
-	df := dockerfile.Dockerfile(manifest.StaticDockerfile)
+	df := dockerfile.Dockerfile(manifest.StaticBuildInfo().Dockerfile)
 	if cacheRef == nil {
 		return df
 	}
 
-	if len(manifest.CachePaths()) == 0 {
+	if len(manifest.DockerInfo.CachePaths()) == 0 {
 		return df
 	}
 
@@ -331,13 +342,14 @@ func (ibd *ImageBuildAndDeployer) staticDockerfile(manifest model.Manifest, cach
 		Append(restDf)
 }
 
-func (ibd *ImageBuildAndDeployer) baseDockerfile(manifest model.Manifest, cacheRef reference.NamedTagged) dockerfile.Dockerfile {
-	df := dockerfile.Dockerfile(manifest.BaseDockerfile)
+func (ibd *ImageBuildAndDeployer) baseDockerfile(fbInfo model.FastBuild,
+	cacheRef reference.NamedTagged, cachePaths []string) dockerfile.Dockerfile {
+	df := dockerfile.Dockerfile(fbInfo.BaseDockerfile)
 	if cacheRef == nil {
 		return df
 	}
 
-	if len(manifest.CachePaths()) == 0 {
+	if len(cachePaths) == 0 {
 		return df
 	}
 
