@@ -36,8 +36,8 @@ func (cbd *LocalContainerBuildAndDeployer) BuildAndDeploy(ctx context.Context, m
 	span.SetTag("manifest", manifest.Name.String())
 	defer span.Finish()
 
-	if manifest.IsDC() {
-		return store.BuildResult{}, RedirectToNextBuilderf("not implemented: DC container builds")
+	if manifest.BuildInfo == nil {
+		return store.BuildResult{}, RedirectToNextBuilderf("no build to do")
 	}
 
 	startTime := time.Now()
@@ -57,8 +57,8 @@ func (cbd *LocalContainerBuildAndDeployer) BuildAndDeploy(ctx context.Context, m
 		return store.BuildResult{}, RedirectToNextBuilderf("prev. build state is empty; container build does not support initial deploy")
 	}
 
-	fbInfo := manifest.FastBuildInfo()
-	if fbInfo.Empty() {
+	fbInfo := manifest.FastBuild()
+	if fbInfo == nil {
 		return store.BuildResult{}, RedirectToNextBuilderf("container build only supports FastBuilds")
 	}
 

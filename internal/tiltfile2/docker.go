@@ -13,20 +13,18 @@ import (
 	"github.com/windmilleng/tilt/internal/ospath"
 )
 
-type dockerImage struct {
-	baseDockerfilePath localPath
-	baseDockerfile     dockerfile.Dockerfile
-	ref                reference.Named
-	mounts             []mount
-	steps              []model.Step
-	entrypoint         string
-	tiltfilePath       localPath
-	cachePaths         []string
+type dockerImage interface {
+	toDomain() (model.BuildInfo, []model.Dockerignore, []model.LocalGithubRepo)
+}
 
-	staticDockerfilePath localPath
-	staticDockerfile     dockerfile.Dockerfile
-	staticBuildPath      localPath
-	staticBuildArgs      model.DockerBuildArgs
+type staticBuild struct {
+	dockerInfo model.DockerInfo
+	ignores    []model.Dockerignore
+	repos      []model.LocalGithubRepo
+}
+
+func (s *staticBuild) toDomain() (model.BuildInfo, []model.Dockerignore, []model.LocalGithubRepo) {
+	return s.dockerInfo, s.ignores, s.repos
 }
 
 func (s *tiltfileState) dockerBuild(thread *skylark.Thread, fn *skylark.Builtin, args skylark.Tuple, kwargs []skylark.Tuple) (skylark.Value, error) {
@@ -90,14 +88,27 @@ func (s *tiltfileState) dockerBuild(thread *skylark.Thread, fn *skylark.Builtin,
 		return nil, err
 	}
 
-	r := &dockerImage{
-		staticDockerfilePath: dockerfilePath,
-		staticDockerfile:     dockerfile.Dockerfile(bs),
-		staticBuildPath:      context,
-		ref:                  ref,
-		tiltfilePath:         s.filename,
-		staticBuildArgs:      sba,
-		cachePaths:           cachePaths,
+	// Now we have everything we need, and construct it into the final form
+
+	dockerInfo := model.DockerInfo{
+		DockerRef: ref,
+		Details: model.StaticBuild{
+			Dockerfile: string(bs),
+			BuildPath:  string(context.path),
+			BuildArgs:  sba,
+		},
+	}.WithCachePaths(cachePaths)
+
+	ignores := newIgnores()
+	ignores.add(context.path)
+
+	repos := newRepos()
+	repos.add(context.repo)
+
+	r := &staticBuild{
+		dockerInfo: dockerInfo,
+		ignores:    ignores.lst,
+		repos:      repos.lst,
 	}
 	s.imagesByName[ref.Name()] = r
 	s.images = append(s.images, r)
@@ -149,19 +160,17 @@ func (s *tiltfileState) fastBuild(thread *skylark.Thread, fn *skylark.Builtin, a
 		return nil, err
 	}
 
-	r := &dockerImage{
-		baseDockerfilePath: baseDockerfilePath,
-		baseDockerfile:     df,
-		ref:                ref,
-		entrypoint:         entrypoint,
-		cachePaths:         cachePaths,
-		tiltfilePath:       s.filename,
+	r := &fastBuild{
+		s:              s,
+		ref:            ref,
+		baseDockerfile: string(df),
+		entrypoint:     entrypoint,
+		cachePaths:     cachePaths,
 	}
 	s.imagesByName[ref.Name()] = r
 	s.images = append(s.images, r)
 
-	fb := &fastBuild{s: s, img: r}
-	return fb, nil
+	return r, nil
 }
 
 func (s *tiltfileState) cachePathsFromSkylarkValue(val skylark.Value) ([]string, error) {
@@ -190,14 +199,20 @@ func (s *tiltfileState) cachePathsFromSkylarkValue(val skylark.Value) ([]string,
 }
 
 type fastBuild struct {
-	s   *tiltfileState
-	img *dockerImage
+	s              *tiltfileState
+	ref            reference.Named
+	baseDockerfile string
+	entrypoint     string
+	cachePaths     []string
+	mounts         []mount
+	steps          []model.Step
 }
 
 var _ skylark.Value = &fastBuild{}
+var _ dockerImage = &fastBuild{}
 
 func (b *fastBuild) String() string {
-	return fmt.Sprintf("fast_build(%q)", b.img.ref.Name())
+	return fmt.Sprintf("fast_build(%q)", b.ref.Name())
 }
 
 func (b *fastBuild) Type() string {
@@ -212,6 +227,34 @@ func (b *fastBuild) Truth() skylark.Bool {
 
 func (b *fastBuild) Hash() (uint32, error) {
 	return 0, fmt.Errorf("unhashable type: fast_build")
+}
+
+func (b *fastBuild) toDomain() (model.BuildInfo, []model.Dockerignore, []model.LocalGithubRepo) {
+	ignores := newIgnores()
+	repos := newRepos()
+	var mounts []model.Mount
+	for _, m := range b.mounts {
+		ignores.add(m.src.path)
+		repos.add(m.src.repo)
+		if m.src.repo != nil {
+			ignores.add(m.src.repo.basePath)
+		}
+		mounts = append(mounts, model.Mount{LocalPath: m.src.path, ContainerPath: m.mountPoint})
+	}
+
+	// FIXME(dbentley): do we need others? e.g. the base dockerfile path?
+
+	info := model.DockerInfo{
+		DockerRef: b.ref,
+		Details: model.FastBuild{
+			Entrypoint:     model.ToShellCmd(b.entrypoint),
+			BaseDockerfile: b.baseDockerfile,
+			Mounts:         mounts,
+			Steps:          b.steps,
+		},
+	}.WithCachePaths(b.cachePaths)
+
+	return info, ignores.lst, repos.lst
 }
 
 const (
@@ -235,8 +278,8 @@ func (b *fastBuild) AttrNames() []string {
 }
 
 func (b *fastBuild) add(thread *skylark.Thread, fn *skylark.Builtin, args skylark.Tuple, kwargs []skylark.Tuple) (skylark.Value, error) {
-	if len(b.img.steps) > 0 {
-		return nil, fmt.Errorf("fast_build(%q).add() called after .run(); must add all code before runs", b.img.ref.Name())
+	if len(b.steps) > 0 {
+		return nil, fmt.Errorf("fast_build(%q).add() called after .run(); must add all code before runs", b.ref.Name())
 	}
 
 	var src skylark.Value
@@ -257,7 +300,7 @@ func (b *fastBuild) add(thread *skylark.Thread, fn *skylark.Builtin, args skylar
 	}
 
 	m.mountPoint = mountPoint
-	b.img.mounts = append(b.img.mounts, m)
+	b.mounts = append(b.mounts, m)
 
 	return b, nil
 }
@@ -289,7 +332,7 @@ func (b *fastBuild) run(thread *skylark.Thread, fn *skylark.Builtin, args skylar
 	step := model.ToStep(b.s.absWorkingDir(), model.ToShellCmd(cmd))
 	step.Triggers = triggers
 
-	b.img.steps = append(b.img.steps, step)
+	b.steps = append(b.steps, step)
 	return b, nil
 }
 
@@ -298,78 +341,60 @@ type mount struct {
 	mountPoint string
 }
 
-func (s *tiltfileState) mountsToDomain(image *dockerImage) []model.Mount {
+func mountsToDomain(mounts []mount) []model.Mount {
 	var result []model.Mount
 
-	for _, m := range image.mounts {
+	for _, m := range mounts {
 		result = append(result, model.Mount{LocalPath: m.src.path, ContainerPath: m.mountPoint})
 	}
 
 	return result
 }
 
-func (s *tiltfileState) reposToDomain(image *dockerImage) []model.LocalGithubRepo {
-	var result []model.LocalGithubRepo
-	repoSet := map[string]bool{}
-
-	maybeAddRepo := func(path localPath) {
-		repo := path.repo
-		if repo == nil || repoSet[repo.basePath] {
-			return
-		}
-
-		repoSet[repo.basePath] = true
-		result = append(result, model.LocalGithubRepo{
-			LocalPath:         repo.basePath,
-			GitignoreContents: repo.gitignoreContents,
-		})
-	}
-
-	for _, m := range image.mounts {
-		maybeAddRepo(m.src)
-	}
-	maybeAddRepo(image.baseDockerfilePath)
-	maybeAddRepo(image.staticDockerfilePath)
-	maybeAddRepo(image.staticBuildPath)
-	maybeAddRepo(image.tiltfilePath)
-
-	return result
+type repos struct {
+	lst []model.LocalGithubRepo
+	set map[string]bool
 }
 
-func (s *tiltfileState) dockerignoresToDomain(image *dockerImage) []model.Dockerignore {
-	var result []model.Dockerignore
-	dupeSet := map[string]bool{}
+func newRepos() *repos {
+	return &repos{set: map[string]bool{}}
+}
 
-	maybeAddDockerignore := func(path string) {
-		if path == "" || dupeSet[path] {
-			return
-		}
-		dupeSet[path] = true
-
-		if !ospath.IsDir(path) {
-			return
-		}
-
-		contents, err := ioutil.ReadFile(filepath.Join(path, ".dockerignore"))
-		if err != nil {
-			return
-		}
-
-		result = append(result, model.Dockerignore{
-			LocalPath: path,
-			Contents:  string(contents),
-		})
+func (r *repos) add(repo *gitRepo) {
+	if repo == nil || r.set[repo.basePath] {
+		return
 	}
 
-	for _, m := range image.mounts {
-		maybeAddDockerignore(m.src.path)
+	r.set[repo.basePath] = true
+	r.lst = append(r.lst, model.LocalGithubRepo{
+		LocalPath:         repo.basePath,
+		GitignoreContents: repo.gitignoreContents,
+	})
+}
 
-		repo := m.src.repo
-		if repo != nil {
-			maybeAddDockerignore(repo.basePath)
-		}
+type ignores struct {
+	lst []model.Dockerignore
+	set map[string]bool
+}
+
+func newIgnores() *ignores {
+	return &ignores{set: map[string]bool{}}
+}
+
+func (i *ignores) add(p string) {
+	if p == "" || i.set[p] || !ospath.IsDir(p) {
+		return
 	}
-	maybeAddDockerignore(image.staticBuildPath.path)
+	i.set[p] = true
 
-	return result
+	contents, err := ioutil.ReadFile(filepath.Join(p, ".dockerignore"))
+	if err != nil {
+		return
+	}
+
+	i.lst = append(i.lst, model.Dockerignore{
+		LocalPath: p,
+		Contents:  string(contents),
+	})
+
 }

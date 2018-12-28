@@ -1,7 +1,6 @@
 package view
 
 import (
-	"reflect"
 	"time"
 
 	"github.com/windmilleng/tilt/internal/model"
@@ -18,7 +17,6 @@ type DCResourceInfo struct {
 }
 
 func (DCResourceInfo) resourceInfoView() {}
-func (dc DCResourceInfo) Empty() bool    { return reflect.DeepEqual(dc, DCResourceInfo{}) }
 
 type Resource struct {
 	Name               model.ManifestName
@@ -52,17 +50,17 @@ type Resource struct {
 	IsYAMLManifest bool
 }
 
-func (r Resource) DCInfo() DCResourceInfo {
+func (r Resource) DCInfo() *DCResourceInfo {
 	switch info := r.ResourceInfo.(type) {
 	case DCResourceInfo:
-		return info
+		return &info
 	default:
-		return DCResourceInfo{}
+		return nil
 	}
 }
 
 func (r Resource) IsDC() bool {
-	return !r.DCInfo().Empty()
+	return r.DCInfo() != nil
 }
 
 func (r Resource) LastBuild() model.BuildStatus {

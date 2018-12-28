@@ -57,7 +57,7 @@ func (ibd *ImageBuildAndDeployer) SetInjectSynclet(inject bool) {
 }
 
 func (ibd *ImageBuildAndDeployer) BuildAndDeploy(ctx context.Context, manifest model.Manifest, state store.BuildState) (br store.BuildResult, err error) {
-	if manifest.IsDC() {
+	if manifest.DCInfo() != nil {
 		return store.BuildResult{}, RedirectToNextBuilderf("dc manifest")
 	}
 	span, ctx := opentracing.StartSpanFromContext(ctx, "daemon-ImageBuildAndDeployer-BuildAndDeploy")
@@ -73,7 +73,7 @@ func (ibd *ImageBuildAndDeployer) BuildAndDeploy(ctx context.Context, manifest m
 		ibd.analytics.Timer("build.image", time.Since(startTime), tags)
 	}()
 
-	hasBuild := manifest.DockerRef() != nil
+	hasBuild := manifest.DockerInfo() != nil
 	numStages := 2
 	if !hasBuild {
 		numStages = 1
@@ -81,8 +81,10 @@ func (ibd *ImageBuildAndDeployer) BuildAndDeploy(ctx context.Context, manifest m
 	ps := build.NewPipelineState(ctx, numStages)
 	defer func() { ps.End(ctx, err) }()
 
-	err = manifest.ValidateDockerK8sManifest()
-	if err != nil {
+	if err := manifest.Validate(); err != nil {
+		return store.BuildResult{}, err
+	}
+	if err := validateForImageBuildAndDeploy(manifest); err != nil {
 		return store.BuildResult{}, err
 	}
 
@@ -106,10 +108,33 @@ func (ibd *ImageBuildAndDeployer) BuildAndDeploy(ctx context.Context, manifest m
 	}, nil
 }
 
+func validateForImageBuildAndDeploy(m model.Manifest) error {
+	if m.BuildInfo != nil {
+		di := m.BuildInfo.(model.DockerInfo)
+
+		if di.DockerRef == nil {
+			return fmt.Errorf("[ValidateDockerK8sManifest] manifest %q missing image ref", m.Name)
+		}
+		switch details := di.Details.(type) {
+		case model.StaticBuild:
+			if details.BuildPath == "" {
+				return fmt.Errorf("[ValidateDockerK8sManifest] manifest %q missing build path", m.Name)
+			}
+		case model.FastBuild:
+			if details.BaseDockerfile == "" {
+				return fmt.Errorf("[ValidateDockerK8sManifest] manifest %q missing base dockerfile", m.Name)
+			}
+		default:
+			panic(fmt.Errorf("[ValidateDockerK8sManifest] unexpected DockerInfo.Details: %T %v", details, details))
+		}
+	}
+	return nil
+}
+
 func (ibd *ImageBuildAndDeployer) build(ctx context.Context, manifest model.Manifest, state store.BuildState, ps *build.PipelineState) (reference.NamedTagged, error) {
 	var n reference.NamedTagged
 
-	dInfo := manifest.DockerInfo
+	dInfo := *manifest.DockerInfo()
 	name := dInfo.DockerRef
 
 	cacheRef, err := ibd.fetchCache(ctx, dInfo.DockerRef, dInfo.CachePaths())
@@ -117,35 +142,36 @@ func (ibd *ImageBuildAndDeployer) build(ctx context.Context, manifest model.Mani
 		return nil, err
 	}
 
-	if sbInfo := manifest.StaticBuildInfo(); !sbInfo.Empty() {
+	switch details := dInfo.Details.(type) {
+	case model.StaticBuild:
 		ps.StartPipelineStep(ctx, "Building Dockerfile: [%s]", name)
 		defer ps.EndPipelineStep(ctx)
 
-		df := ibd.staticDockerfile(manifest, cacheRef)
-		ref, err := ibd.b.BuildDockerfile(ctx, ps, name, df, sbInfo.BuildPath, ignore.CreateBuildContextFilter(manifest), sbInfo.BuildArgs)
+		df := ibd.staticDockerfile(dInfo, cacheRef)
+		ref, err := ibd.b.BuildDockerfile(ctx, ps, name, df, details.BuildPath, ignore.CreateBuildContextFilter(manifest), details.BuildArgs)
 
 		if err != nil {
 			return nil, err
 		}
 		n = ref
 
-		go ibd.maybeCreateCacheFrom(ctx, ref, state, manifest, cacheRef)
+		go ibd.maybeCreateCacheFrom(ctx, ref, state, dInfo, cacheRef)
 
-	} else if fbInfo := manifest.FastBuildInfo(); !fbInfo.Empty() {
+	case model.FastBuild:
 		if !state.HasImage() || ibd.updateMode == UpdateModeNaive {
 			// No existing image to build off of, need to build from scratch
 			ps.StartPipelineStep(ctx, "Building from scratch: [%s]", name)
 			defer ps.EndPipelineStep(ctx)
 
-			df := ibd.baseDockerfile(fbInfo, cacheRef, manifest.DockerInfo.CachePaths())
-			steps := fbInfo.Steps
-			ref, err := ibd.b.BuildImageFromScratch(ctx, ps, name, df, fbInfo.Mounts, ignore.CreateBuildContextFilter(manifest), steps, fbInfo.Entrypoint)
+			df := ibd.baseDockerfile(details, cacheRef, dInfo.CachePaths())
+			steps := details.Steps
+			ref, err := ibd.b.BuildImageFromScratch(ctx, ps, name, df, details.Mounts, ignore.CreateBuildContextFilter(manifest), steps, details.Entrypoint)
 
 			if err != nil {
 				return nil, err
 			}
 			n = ref
-			go ibd.maybeCreateCacheFrom(ctx, ref, state, manifest, cacheRef)
+			go ibd.maybeCreateCacheFrom(ctx, ref, state, dInfo, cacheRef)
 
 		} else {
 			// We have an existing image, can do an iterative build
@@ -154,7 +180,7 @@ func (ibd *ImageBuildAndDeployer) build(ctx context.Context, manifest model.Mani
 				return nil, err
 			}
 
-			cf, err := build.FilesToPathMappings(changed, fbInfo.Mounts)
+			cf, err := build.FilesToPathMappings(changed, details.Mounts)
 			if err != nil {
 				return nil, err
 			}
@@ -162,14 +188,14 @@ func (ibd *ImageBuildAndDeployer) build(ctx context.Context, manifest model.Mani
 			ps.StartPipelineStep(ctx, "Building from existing: [%s]", name)
 			defer ps.EndPipelineStep(ctx)
 
-			steps := fbInfo.Steps
+			steps := details.Steps
 			ref, err := ibd.b.BuildImageFromExisting(ctx, ps, state.LastResult.Image, cf, ignore.CreateBuildContextFilter(manifest), steps)
 			if err != nil {
 				return nil, err
 			}
 			n = ref
 		}
-	} else {
+	default:
 		// Theoretically this should never trip b/c we `validate` the manifest beforehand...?
 		// If we get here, something is very wrong.
 		return nil, fmt.Errorf("manifest %q has no valid buildDetails (neither StaticBuildInfo nor FastBuildInfo)", manifest.Name)
@@ -289,7 +315,7 @@ func (ibd *ImageBuildAndDeployer) fetchCache(ctx context.Context, ref reference.
 	return ibd.cacheBuilder.FetchCache(ctx, ref, cachePaths)
 }
 
-func (ibd *ImageBuildAndDeployer) maybeCreateCacheFrom(ctx context.Context, sourceRef reference.NamedTagged, state store.BuildState, manifest model.Manifest, oldCacheRef reference.NamedTagged) {
+func (ibd *ImageBuildAndDeployer) maybeCreateCacheFrom(ctx context.Context, sourceRef reference.NamedTagged, state store.BuildState, dInfo model.DockerInfo, oldCacheRef reference.NamedTagged) {
 	// Only create the cache the first time we build the image.
 	if !state.LastResult.IsEmpty() {
 		return
@@ -300,34 +326,36 @@ func (ibd *ImageBuildAndDeployer) maybeCreateCacheFrom(ctx context.Context, sour
 		return
 	}
 
-	baseDockerfile := dockerfile.Dockerfile(manifest.FastBuildInfo().BaseDockerfile)
+	var baseDockerfile dockerfile.Dockerfile
 	var buildArgs model.DockerBuildArgs
 
-	if sbInfo := manifest.StaticBuildInfo(); !sbInfo.Empty() {
-		staticDockerfile := dockerfile.Dockerfile(sbInfo.Dockerfile)
-		ok := true
-		baseDockerfile, _, ok = staticDockerfile.SplitIntoBaseDockerfile()
+	switch details := dInfo.Details.(type) {
+	case model.FastBuild:
+		baseDockerfile = dockerfile.Dockerfile(details.BaseDockerfile)
+	case model.StaticBuild:
+		df := dockerfile.Dockerfile(details.Dockerfile)
+		var ok bool
+		baseDockerfile, _, ok = df.SplitIntoBaseDockerfile()
 		if !ok {
 			return
 		}
-
-		buildArgs = sbInfo.BuildArgs
+		buildArgs = details.BuildArgs
 	}
 
 	err := ibd.cacheBuilder.CreateCacheFrom(ctx, baseDockerfile, sourceRef,
-		manifest.DockerInfo.CachePaths(), buildArgs)
+		dInfo.CachePaths(), buildArgs)
 	if err != nil {
 		logger.Get(ctx).Debugf("Could not create cache: %v", err)
 	}
 }
 
-func (ibd *ImageBuildAndDeployer) staticDockerfile(manifest model.Manifest, cacheRef reference.NamedTagged) dockerfile.Dockerfile {
-	df := dockerfile.Dockerfile(manifest.StaticBuildInfo().Dockerfile)
+func (ibd *ImageBuildAndDeployer) staticDockerfile(dInfo model.DockerInfo, cacheRef reference.NamedTagged) dockerfile.Dockerfile {
+	df := dockerfile.Dockerfile(dInfo.StaticBuild().Dockerfile)
 	if cacheRef == nil {
 		return df
 	}
 
-	if len(manifest.DockerInfo.CachePaths()) == 0 {
+	if len(dInfo.CachePaths()) == 0 {
 		return df
 	}
 

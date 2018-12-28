@@ -43,9 +43,10 @@ func NewSanchoFastBuildManifest(fixture pather) model.Manifest {
 	}
 	m := model.Manifest{
 		Name: "sancho",
-		DockerInfo: model.DockerInfo{
+		DockerInfo: &model.DockerInfo{
 			DockerRef: SanchoRef,
-		}.WithBuildDetails(fbInfo),
+			Details:   fbInfo,
+		},
 	}
 
 	m = m.WithDeployInfo(model.K8sInfo{YAML: SanchoYAML})
@@ -62,12 +63,13 @@ func NewSanchoFastBuildManifestWithCache(fixture pather, paths []string) model.M
 func NewSanchoStaticManifest() model.Manifest {
 	m := model.Manifest{
 		Name: "sancho",
-		DockerInfo: model.DockerInfo{
+		BuildInfo: &model.DockerInfo{
 			DockerRef: SanchoRef,
-		}.WithBuildDetails(model.StaticBuild{
-			Dockerfile: SanchoStaticDockerfile,
-			BuildPath:  "/path/to/build",
-		}),
+			Details: &model.StaticBuild{
+				Dockerfile: SanchoStaticDockerfile,
+				BuildPath:  "/path/to/build",
+			},
+		},
 	}.WithDeployInfo(model.K8sInfo{YAML: SanchoYAML})
 	return m
 }

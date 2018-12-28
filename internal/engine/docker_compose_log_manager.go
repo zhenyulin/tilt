@@ -37,7 +37,7 @@ func (m *DockerComposeLogManager) diff(ctx context.Context, st store.RStore) (se
 
 	for _, ms := range state.ManifestStates {
 		dcInfo := ms.Manifest.DCInfo()
-		if dcInfo.Empty() {
+		if dcInfo == nil {
 			continue
 		}
 

@@ -105,7 +105,7 @@ func (b *fakeBuildAndDeployer) BuildAndDeploy(ctx context.Context, manifest mode
 	}
 
 	// TODO(dmiller): change nextBuildResult to work with docker compose instead
-	if manifest.IsDC() {
+	if manifest.DCInfo() != nil {
 		return b.nextBuildResult(imageID), nil
 	}
 	return b.nextBuildResult(manifest.DockerInfo.DockerRef), nil

@@ -7,7 +7,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/docker/distribution/reference"
 	"github.com/windmilleng/tilt/internal/container"
 	"github.com/windmilleng/tilt/internal/dockercompose"
 	"github.com/windmilleng/tilt/internal/hud/view"
@@ -226,8 +225,8 @@ func NewYAMLManifestState() *YAMLManifestState {
 }
 
 type PodSet struct {
-	Pods    map[k8s.PodID]*Pod
-	ImageID reference.NamedTagged
+	Pods     map[k8s.PodID]*Pod
+	DeployID string
 }
 
 func NewPodSet(pods ...Pod) PodSet {
@@ -503,7 +502,7 @@ func StateToView(s EngineState) view.View {
 }
 
 func resourceInfoView(ms *ManifestState) view.ResourceInfoView {
-	if dcInfo := ms.Manifest.DCInfo(); !dcInfo.Empty() {
+	if dcInfo := ms.Manifest.DCInfo(); dcInfo != nil {
 		dcState := ms.DCResourceState()
 		return view.DCResourceInfo{
 			ConfigPath: dcInfo.ConfigPath,
@@ -521,7 +520,7 @@ func resourceInfoView(ms *ManifestState) view.ResourceInfoView {
 // path from the first d-c manifest we see.
 func (s EngineState) DockerComposeConfigPath() string {
 	for _, ms := range s.ManifestStates {
-		if dcInfo := ms.Manifest.DCInfo(); !dcInfo.Empty() {
+		if dcInfo := ms.Manifest.DCInfo(); dcInfo != nil {
 			return dcInfo.ConfigPath
 		}
 	}

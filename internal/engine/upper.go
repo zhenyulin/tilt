@@ -438,15 +438,15 @@ func ensureManifestStateWithPod(state *store.EngineState, pod *v1.Pod) (*store.M
 	// 3) This pod has an deployID we recognize, and we need to record it.
 	// 4) This pod has an deployID we recognize, and we've already recorded it.
 
+	knownDeployTime, ok := deployIDToTime(ms.PodSet.DeployID)
+
 	// (1) + (2)
-	if ms.PodSet.DeployID != deployID {
-		deployTime, err := store.TimeFromDeployID(deployID)
-		if err != nil {
+	if !ok || ms.PodSet.DeployID != deployID {
+		deployTime, ok := deployIDToTime(deployID)
+		if !ok {
 			// We can't parse the time, so the deploy id was weird. Ignore.
 			return nil, nil
 		}
-
-		knownDeployTime := ms.DeployTime()
 
 		if deployTime.Before(knownDeployTime) {
 			// (1)
@@ -530,12 +530,22 @@ func handlePodEvent(ctx context.Context, state *store.EngineState, pod *v1.Pod) 
 
 	defer prunePods(ms)
 
-	// Check if the container is ready.
-	cStatus, err := k8s.ContainerMatching(pod, ms.Manifest.DockerInfo.DockerRef)
-	if err != nil {
-		logger.Get(ctx).Debugf("Error matching container: %v", err)
-		return
-	} else if cStatus.Name == "" {
+	var cStatus v1.ContainerStatus
+	switch info := ms.Manifest.BuildInfo.(type) {
+	case model.DockerInfo:
+		// Check if the container is ready.
+		var err error
+		cStatus, err = k8s.ContainerMatching(pod, info.DockerRef)
+		if err != nil {
+			logger.Get(ctx).Debugf("Error matching container: %v", err)
+		}
+	default:
+		if len(pod.Status.ContainerStatuses) > 0 {
+			cStatus = pod.Status.ContainerStatuses[0]
+		}
+	}
+
+	if cStatus.Name == "" {
 		return
 	}
 

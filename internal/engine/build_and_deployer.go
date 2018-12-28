@@ -2,6 +2,8 @@ package engine
 
 import (
 	"context"
+	"strconv"
+	"time"
 
 	"github.com/windmilleng/tilt/internal/store"
 
@@ -96,4 +98,17 @@ func DefaultBuildOrder(sbad *SyncletBuildAndDeployer, cbad *LocalContainerBuildA
 
 	ibad.SetInjectSynclet(true)
 	return BuildOrder{sbad, dcbad, ibad}
+}
+
+func nowToDeployID() string {
+	now := time.Now()
+	return strconv.FormatInt(now.Unix(), 10)
+}
+
+func deployIDToTime(s string) (time.Time, bool) {
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return time.Unix(n, 0), true
 }

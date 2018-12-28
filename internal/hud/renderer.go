@@ -196,7 +196,7 @@ func isCrashing(res view.Resource) bool {
 }
 
 func bestLogs(res view.Resource) string {
-	if dcInfo := res.DCInfo(); !dcInfo.Empty() {
+	if dcInfo := res.DCInfo(); dcInfo != nil {
 		return dcInfo.Log
 	}
 

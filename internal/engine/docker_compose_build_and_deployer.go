@@ -28,7 +28,7 @@ func (bd *DockerComposeBuildAndDeployer) BuildAndDeploy(ctx context.Context, man
 	defer span.Finish()
 
 	dcInfo := manifest.DCInfo()
-	if dcInfo.Empty() {
+	if dcInfo == nil {
 		return store.BuildResult{}, RedirectToNextBuilderf("not a docker compose manifest")
 
 	}

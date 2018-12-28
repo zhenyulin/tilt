@@ -49,10 +49,6 @@ func (sbd *SyncletBuildAndDeployer) BuildAndDeploy(ctx context.Context, manifest
 	span, ctx := opentracing.StartSpanFromContext(ctx, "SyncletBuildAndDeployer-BuildAndDeploy")
 	defer span.Finish()
 
-	if manifest.IsDC() {
-		return store.BuildResult{}, RedirectToNextBuilderf("not implemented: DC container builds")
-	}
-
 	if err := sbd.canSyncletBuild(ctx, manifest, state); err != nil {
 		return store.BuildResult{}, WrapRedirectToNextBuilder(err)
 	}
@@ -72,13 +68,17 @@ func (sbd *SyncletBuildAndDeployer) canSyncletBuild(ctx context.Context,
 		return err
 	}
 
+	if manifest.BuildInfo == nil {
+		return fmt.Errorf("no build to do")
+	}
+
 	// SyncletBuildAndDeployer doesn't support initial build
 	if state.IsEmpty() {
 		return fmt.Errorf("prev. build state is empty; synclet build does not support initial deploy")
 	}
 
-	if fbInfo := manifest.FastBuildInfo(); fbInfo.Empty() {
-		return fmt.Errorf("container build only supports FastBuilds")
+	if manifest.FastBuild() == nil {
+		return fmt.Errorf("synclet build only supports FastBuilds")
 	}
 
 	// Can't do container update if we don't know what container manifest is running in.
@@ -95,7 +95,7 @@ func (sbd *SyncletBuildAndDeployer) updateViaSynclet(ctx context.Context,
 	defer span.Finish()
 
 	paths, err := build.FilesToPathMappings(
-		state.FilesChanged(), manifest.FastBuildInfo().Mounts)
+		state.FilesChanged(), manifest.FastBuild().Mounts)
 	if err != nil {
 		return store.BuildResult{}, err
 	}
@@ -124,7 +124,7 @@ func (sbd *SyncletBuildAndDeployer) updateViaSynclet(ctx context.Context,
 		return store.BuildResult{}, fmt.Errorf("no deploy info")
 	}
 
-	cmds, err := build.BoilSteps(manifest.FastBuildInfo().Steps, paths)
+	cmds, err := build.BoilSteps(manifest.FastBuild().Steps, paths)
 	if err != nil {
 		return store.BuildResult{}, err
 	}

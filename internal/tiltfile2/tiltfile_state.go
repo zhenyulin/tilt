@@ -28,8 +28,8 @@ type tiltfileState struct {
 
 	// added to during execution
 	configFiles    []string
-	images         []*dockerImage
-	imagesByName   map[string]*dockerImage
+	images         []dockerImage
+	imagesByName   map[string]dockerImage
 	k8s            []*k8sResource
 	k8sByName      map[string]*k8sResource
 	k8sUnresourced []k8s.K8sEntity
@@ -44,7 +44,7 @@ func newTiltfileState(ctx context.Context, filename string, tfRoot string) *tilt
 	s := &tiltfileState{
 		ctx:          ctx,
 		filename:     localPath{path: filename},
-		imagesByName: make(map[string]*dockerImage),
+		imagesByName: make(map[string]dockerImage),
 		k8sByName:    make(map[string]*k8sResource),
 		configFiles:  []string{filename},
 		usedImages:   make(map[string]bool),
@@ -302,7 +302,7 @@ func (s *tiltfileState) translateK8s(resources []*k8sResource) ([]model.Manifest
 	for _, r := range resources {
 		m := model.Manifest{
 			Name: model.ManifestName(r.name),
-		}
+		}.WithTiltFilename(s.filename.path)
 
 		k8sYaml, err := k8s.SerializeYAML(r.k8s)
 		if err != nil {
@@ -311,43 +311,18 @@ func (s *tiltfileState) translateK8s(resources []*k8sResource) ([]model.Manifest
 
 		m = m.WithDeployInfo(model.K8sInfo{
 			YAML:         k8sYaml,
-			PortForwards: s.portForwardsToDomain(r), // FIXME(dbentley)
+			PortForwards: s.portForwardsToDomain(r),
 		})
 
 		if r.imageRef != "" {
 			image := s.imagesByName[r.imageRef]
-			staticBuild := model.StaticBuild{
-				Dockerfile: image.staticDockerfile.String(),
-				BuildPath:  string(image.staticBuildPath.path),
-				BuildArgs:  image.staticBuildArgs,
-			}
-			fastBuild := model.FastBuild{
-				BaseDockerfile: image.baseDockerfile.String(),
-				Mounts:         s.mountsToDomain(image),
-				Steps:          image.steps,
-				Entrypoint:     model.ToShellCmd(image.entrypoint),
-			}
-
-			dInfo := model.DockerInfo{
-				DockerRef: image.ref,
-			}.WithCachePaths(image.cachePaths)
-
-			if !staticBuild.Empty() && !fastBuild.Empty() {
-				return nil, fmt.Errorf("cannot populate both staticBuild and fastBuild properties")
-			} else if !staticBuild.Empty() {
-				dInfo = dInfo.WithBuildDetails(staticBuild)
-			} else if !fastBuild.Empty() {
-				dInfo = dInfo.WithBuildDetails(fastBuild)
-			}
-
-			m.DockerInfo = dInfo
-			m = m.WithTiltFilename(image.tiltfilePath.path).
-				WithRepos(s.reposToDomain(image)).
-				WithDockerignores(s.dockerignoresToDomain(image))
+			buildInfo, dockerIgnores, repos := image.toDomain()
+			m.BuildInfo = buildInfo
+			m = m.WithDockerignores(dockerIgnores).WithRepos(repos)
 		}
+
 		result = append(result, m)
 	}
-
 	return result, nil
 }
 

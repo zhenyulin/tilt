@@ -20,48 +20,51 @@ func (m ManifestName) String() string { return string(m) }
 // NOTE: If you modify Manifest, make sure to modify `Manifest.Equal` appropriately
 type Manifest struct {
 	// Properties for all manifests.
-	Name          ManifestName
-	tiltFilename  string
+	Name         ManifestName
+	tiltFilename string
+
+	// TODO(dbentley): these should probably be part of BuildInfo
 	dockerignores []Dockerignore
 	repos         []LocalGithubRepo
 
-	// Info needed to Docker build an image. (This struct contains details of StaticBuild, FastBuild... etc.)
-	// (If we ever support multiple build engines, this can become an interface wildcard similar to `deployInfo`).
-	DockerInfo DockerInfo
+	// How to build
+	BuildInfo BuildInfo
 
-	// Info needed to deploy. Can be k8s yaml, docker compose, etc.
+	// How to deploy
 	deployInfo deployInfo
 }
 
 type DockerBuildArgs map[string]string
 
-func (m Manifest) StaticBuildInfo() StaticBuild {
-	if info, ok := m.DockerInfo.buildDetails.(StaticBuild); ok {
-		return info
+func (m Manifest) DockerInfo() *DockerInfo {
+	if m.BuildInfo == nil {
+		return nil
 	}
-	return StaticBuild{}
+	r, _ := m.BuildInfo.(DockerInfo)
+	return &r
 }
 
-func (m Manifest) IsStaticBuild() bool {
-	return !m.StaticBuildInfo().Empty()
-}
-
-func (m Manifest) FastBuildInfo() FastBuild {
-	if info, ok := m.DockerInfo.buildDetails.(FastBuild); ok {
-		return info
+func (m Manifest) StaticBuild() *StaticBuild {
+	di := m.DockerInfo()
+	if di == nil {
+		return nil
 	}
-	return FastBuild{}
+	return di.StaticBuild()
 }
 
-func (m Manifest) DCInfo() DCInfo {
+func (m Manifest) FastBuild() *FastBuild {
+	di := m.DockerInfo()
+	if di == nil {
+		return nil
+	}
+	return di.FastBuild()
+}
+
+func (m Manifest) DCInfo() *DCInfo {
 	if info, ok := m.deployInfo.(DCInfo); ok {
-		return info
+		return &info
 	}
-	return DCInfo{}
-}
-
-func (m Manifest) IsDC() bool {
-	return !m.DCInfo().Empty()
+	return nil
 }
 
 func (m Manifest) K8sInfo() K8sInfo {
@@ -95,22 +98,25 @@ func (m Manifest) Dockerignores() []Dockerignore {
 }
 
 func (m Manifest) LocalPaths() []string {
-	if sbInfo := m.StaticBuildInfo(); !sbInfo.Empty() {
-		return []string{sbInfo.BuildPath}
-	} else if fbInfo := m.FastBuildInfo(); !fbInfo.Empty() {
-		result := make([]string, len(fbInfo.Mounts))
-		for i, mount := range fbInfo.Mounts {
+	if m.BuildInfo == nil {
+		// TK(dbentley)
+		return nil
+	}
+
+	di := m.BuildInfo.(DockerInfo)
+	switch details := di.Details.(type) {
+	case StaticBuild:
+		return []string{details.BuildPath}
+
+	case FastBuild:
+		result := make([]string, len(details.Mounts))
+		for i, mount := range details.Mounts {
 			result[i] = mount.LocalPath
 		}
 		return result
-	} else if dcInfo := m.DCInfo(); !dcInfo.Empty() {
-		result := make([]string, len(dcInfo.Mounts))
-		for i, mount := range fbInfo.Mounts {
-			result[i] = mount.LocalPath
-		}
+	default:
+		panic(fmt.Errorf("unexpected DockerInfo details type: %T %v", details, details))
 	}
-
-	return nil
 }
 
 func (m Manifest) Validate() error {
@@ -118,8 +124,8 @@ func (m Manifest) Validate() error {
 		return fmt.Errorf("[validate] manifest missing name: %+v", m)
 	}
 
-	fbInfo := m.FastBuildInfo()
-	if fbInfo.Empty() {
+	fbInfo := m.FastBuild()
+	if fbInfo == nil {
 		return nil
 	}
 
@@ -132,38 +138,12 @@ func (m Manifest) Validate() error {
 	return nil
 }
 
-// ValidateDockerK8sManifest indicates whether this manifest is a valid Docker-buildable &
-// k8s-deployable manifest.
-func (m Manifest) ValidateDockerK8sManifest() error {
-	if m.DockerInfo.DockerRef == nil {
-		return fmt.Errorf("[ValidateDockerK8sManifest] manifest %q missing image ref", m.Name)
-	}
-
-	if m.K8sInfo().YAML == "" {
-		return fmt.Errorf("[ValidateDockerK8sManifest] manifest %q missing k8s YAML", m.Name)
-	}
-
-	if sbInfo := m.StaticBuildInfo(); !sbInfo.Empty() {
-		if sbInfo.BuildPath == "" {
-			return fmt.Errorf("[ValidateDockerK8sManifest] manifest %q missing build path", m.Name)
-		}
-	} else if fbInfo := m.FastBuildInfo(); !fbInfo.Empty() {
-		if fbInfo.BaseDockerfile == "" {
-			return fmt.Errorf("[ValidateDockerK8sManifest] manifest %q missing base dockerfile", m.Name)
-		}
-	} else {
-		return fmt.Errorf("[ValidateDockerK8sManifest] manifest %q has neither StaticBuildInfo nor FastBuildInfo", m.Name)
-	}
-
-	return nil
-}
-
 func (m1 Manifest) Equal(m2 Manifest) bool {
 	primitivesMatch := m1.Name == m2.Name && m1.tiltFilename == m2.tiltFilename
 	reposMatch := DeepEqual(m1.repos, m2.repos)
 	dockerignoresMatch := DeepEqual(m1.dockerignores, m2.dockerignores)
 
-	dockerEqual := DeepEqual(m1.DockerInfo, m2.DockerInfo)
+	dockerEqual := DeepEqual(m1.BuildInfo, m2.BuildInfo)
 
 	dc1 := m1.DCInfo()
 	dc2 := m2.DCInfo()

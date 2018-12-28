@@ -68,35 +68,35 @@ var equalitytests = []struct {
 	},
 	{
 		Manifest{
-			DockerInfo: DockerInfo{}.WithBuildDetails(
+			BuildInfo: DockerInfo{}.WithBuildDetails(
 				FastBuild{BaseDockerfile: "FROM node"}),
 		},
 		Manifest{
-			DockerInfo: DockerInfo{}.WithBuildDetails(
+			BuildInfo: DockerInfo{}.WithBuildDetails(
 				FastBuild{BaseDockerfile: "FROM nope"}),
 		},
 		false,
 	},
 	{
 		Manifest{
-			DockerInfo: DockerInfo{}.WithBuildDetails(
+			BuildInfo: DockerInfo{}.WithBuildDetails(
 				FastBuild{BaseDockerfile: "FROM node"}),
 		},
 		Manifest{
-			DockerInfo: DockerInfo{}.WithBuildDetails(
+			BuildInfo: DockerInfo{}.WithBuildDetails(
 				FastBuild{BaseDockerfile: "FROM node"}),
 		},
 		true,
 	},
 	{
 		Manifest{
-			DockerInfo: DockerInfo{}.WithBuildDetails(
+			BuildInfo: DockerInfo{}.WithBuildDetails(
 				FastBuild{
 					Entrypoint: Cmd{Argv: []string{"echo", "hi"}},
 				}),
 		},
 		Manifest{
-			DockerInfo: DockerInfo{}.WithBuildDetails(
+			BuildInfo: DockerInfo{}.WithBuildDetails(
 				FastBuild{
 					Entrypoint: Cmd{Argv: []string{"echo", "hi"}},
 				}),
@@ -105,13 +105,13 @@ var equalitytests = []struct {
 	},
 	{
 		Manifest{
-			DockerInfo: DockerInfo{}.WithBuildDetails(
+			BuildInfo: DockerInfo{}.WithBuildDetails(
 				FastBuild{
 					Entrypoint: Cmd{Argv: []string{"echo", "hi"}},
 				}),
 		},
 		Manifest{
-			DockerInfo: DockerInfo{}.WithBuildDetails(
+			BuildInfo: DockerInfo{}.WithBuildDetails(
 				FastBuild{
 					Entrypoint: Cmd{Argv: []string{"bash", "-c", "echo hi"}},
 				}),
@@ -120,44 +120,44 @@ var equalitytests = []struct {
 	},
 	{
 		Manifest{
-			DockerInfo: DockerInfo{}.WithBuildDetails(
+			BuildInfo: DockerInfo{}.WithBuildDetails(
 				FastBuild{Mounts: []Mount{mount1}}),
 		},
 		Manifest{
-			DockerInfo: DockerInfo{}.WithBuildDetails(
+			BuildInfo: DockerInfo{}.WithBuildDetails(
 				FastBuild{Mounts: []Mount{mount1}}),
 		},
 		true,
 	},
 	{
 		Manifest{
-			DockerInfo: DockerInfo{}.WithBuildDetails(
+			BuildInfo: DockerInfo{}.WithBuildDetails(
 				FastBuild{Mounts: []Mount{mount1}}),
 		},
 		Manifest{
-			DockerInfo: DockerInfo{}.WithBuildDetails(
+			BuildInfo: DockerInfo{}.WithBuildDetails(
 				FastBuild{Mounts: []Mount{mount2}}),
 		},
 		false,
 	},
 	{
 		Manifest{
-			DockerInfo: DockerInfo{}.WithBuildDetails(
+			BuildInfo: DockerInfo{}.WithBuildDetails(
 				FastBuild{Mounts: []Mount{mount1}}),
 		},
 		Manifest{
-			DockerInfo: DockerInfo{}.WithBuildDetails(
+			BuildInfo: DockerInfo{}.WithBuildDetails(
 				FastBuild{Mounts: []Mount{mount1, mount2}}),
 		},
 		false,
 	},
 	{
 		Manifest{
-			DockerInfo: DockerInfo{}.WithBuildDetails(
+			BuildInfo: DockerInfo{}.WithBuildDetails(
 				FastBuild{Mounts: nil}),
 		},
 		Manifest{
-			DockerInfo: DockerInfo{}.WithBuildDetails(
+			BuildInfo: DockerInfo{}.WithBuildDetails(
 				FastBuild{Mounts: []Mount{}}),
 		},
 		true,
@@ -212,12 +212,12 @@ var equalitytests = []struct {
 	},
 	{
 		Manifest{
-			DockerInfo: DockerInfo{}.WithBuildDetails(
+			BuildInfo: DockerInfo{}.WithBuildDetails(
 				FastBuild{Steps: []Step{stepSayHi}},
 			),
 		},
 		Manifest{
-			DockerInfo: DockerInfo{}.WithBuildDetails(
+			BuildInfo: DockerInfo{}.WithBuildDetails(
 				FastBuild{Steps: []Step{stepSayHi}},
 			),
 		},
@@ -225,12 +225,12 @@ var equalitytests = []struct {
 	},
 	{
 		Manifest{
-			DockerInfo: DockerInfo{}.WithBuildDetails(
+			BuildInfo: DockerInfo{}.WithBuildDetails(
 				FastBuild{Steps: []Step{stepSayHi}},
 			),
 		},
 		Manifest{
-			DockerInfo: DockerInfo{}.WithBuildDetails(
+			BuildInfo: DockerInfo{}.WithBuildDetails(
 				FastBuild{Steps: []Step{stepSayBye}},
 			),
 		},
@@ -238,12 +238,12 @@ var equalitytests = []struct {
 	},
 	{
 		Manifest{
-			DockerInfo: DockerInfo{}.WithBuildDetails(
+			BuildInfo: DockerInfo{}.WithBuildDetails(
 				FastBuild{Steps: []Step{stepSayHiTriggerFoo}},
 			),
 		},
 		Manifest{
-			DockerInfo: DockerInfo{}.WithBuildDetails(
+			BuildInfo: DockerInfo{}.WithBuildDetails(
 				FastBuild{Steps: []Step{stepSayHiTriggerFoo}},
 			),
 		},
@@ -251,77 +251,77 @@ var equalitytests = []struct {
 	},
 	{
 		Manifest{
-			DockerInfo: DockerInfo{}.WithBuildDetails(
+			BuildInfo: DockerInfo{}.WithBuildDetails(
 				FastBuild{Steps: []Step{stepSayHiTriggerFoo}},
 			),
 		},
 		Manifest{
-			DockerInfo: DockerInfo{}.WithBuildDetails(
+			BuildInfo: DockerInfo{}.WithBuildDetails(
 				FastBuild{Steps: []Step{stepSayHiTriggerBar}}),
 		},
 		false,
 	},
 	{
 		Manifest{
-			DockerInfo: DockerInfo{}.WithBuildDetails(
+			BuildInfo: DockerInfo{}.WithBuildDetails(
 				FastBuild{Steps: []Step{stepSayHiTriggerDirA}},
 			),
 		},
 		Manifest{
-			DockerInfo: DockerInfo{}.WithBuildDetails(
+			BuildInfo: DockerInfo{}.WithBuildDetails(
 				FastBuild{Steps: []Step{stepSayHiTriggerDirB}},
 			),
 		},
 		false,
 	},
 	{
-		Manifest{DockerInfo: DockerInfo{}.WithBuildDetails(StaticBuild{Dockerfile: "FROM foo"})},
-		Manifest{DockerInfo: DockerInfo{}.WithBuildDetails(StaticBuild{Dockerfile: "FROM bar"})},
+		Manifest{BuildInfo: DockerInfo{}.WithBuildDetails(StaticBuild{Dockerfile: "FROM foo"})},
+		Manifest{BuildInfo: DockerInfo{}.WithBuildDetails(StaticBuild{Dockerfile: "FROM bar"})},
 		false,
 	},
 	{
-		Manifest{DockerInfo: DockerInfo{}.WithBuildDetails(StaticBuild{Dockerfile: "FROM foo"})},
-		Manifest{DockerInfo: DockerInfo{}.WithBuildDetails(StaticBuild{Dockerfile: "FROM foo"})},
+		Manifest{BuildInfo: DockerInfo{}.WithBuildDetails(StaticBuild{Dockerfile: "FROM foo"})},
+		Manifest{BuildInfo: DockerInfo{}.WithBuildDetails(StaticBuild{Dockerfile: "FROM foo"})},
 		true,
 	},
 	{
-		Manifest{DockerInfo: DockerInfo{}.WithBuildDetails(StaticBuild{BuildPath: "foo/bar"})},
-		Manifest{DockerInfo: DockerInfo{}.WithBuildDetails(StaticBuild{BuildPath: "foo/bar/baz"})},
+		Manifest{BuildInfo: DockerInfo{}.WithBuildDetails(StaticBuild{BuildPath: "foo/bar"})},
+		Manifest{BuildInfo: DockerInfo{}.WithBuildDetails(StaticBuild{BuildPath: "foo/bar/baz"})},
 		false,
 	},
 	{
-		Manifest{DockerInfo: DockerInfo{}.WithBuildDetails(StaticBuild{BuildPath: "foo/bar"})},
-		Manifest{DockerInfo: DockerInfo{}.WithBuildDetails(StaticBuild{BuildPath: "foo/bar"})},
+		Manifest{BuildInfo: DockerInfo{}.WithBuildDetails(StaticBuild{BuildPath: "foo/bar"})},
+		Manifest{BuildInfo: DockerInfo{}.WithBuildDetails(StaticBuild{BuildPath: "foo/bar"})},
 		true,
 	},
 	{
-		Manifest{DockerInfo: DockerInfo{}.WithBuildDetails(StaticBuild{BuildArgs: buildArgs1})},
-		Manifest{DockerInfo: DockerInfo{}.WithBuildDetails(StaticBuild{BuildArgs: buildArgs2})},
+		Manifest{BuildInfo: DockerInfo{}.WithBuildDetails(StaticBuild{BuildArgs: buildArgs1})},
+		Manifest{BuildInfo: DockerInfo{}.WithBuildDetails(StaticBuild{BuildArgs: buildArgs2})},
 		false,
 	},
 	{
-		Manifest{DockerInfo: DockerInfo{}.WithBuildDetails(StaticBuild{BuildArgs: buildArgs1})},
-		Manifest{DockerInfo: DockerInfo{}.WithBuildDetails(StaticBuild{BuildArgs: buildArgs1})},
+		Manifest{BuildInfo: DockerInfo{}.WithBuildDetails(StaticBuild{BuildArgs: buildArgs1})},
+		Manifest{BuildInfo: DockerInfo{}.WithBuildDetails(StaticBuild{BuildArgs: buildArgs1})},
 		true,
 	},
 	{
-		Manifest{DockerInfo: DockerInfo{cachePaths: []string{"foo"}}},
-		Manifest{DockerInfo: DockerInfo{cachePaths: []string{"bar"}}},
+		Manifest{BuildInfo: DockerInfo{cachePaths: []string{"foo"}}},
+		Manifest{BuildInfo: DockerInfo{cachePaths: []string{"bar"}}},
 		false,
 	},
 	{
-		Manifest{DockerInfo: DockerInfo{cachePaths: []string{"foo"}}},
-		Manifest{DockerInfo: DockerInfo{cachePaths: []string{"foo"}}},
+		Manifest{BuildInfo: DockerInfo{cachePaths: []string{"foo"}}},
+		Manifest{BuildInfo: DockerInfo{cachePaths: []string{"foo"}}},
 		true,
 	},
 	{
-		Manifest{DockerInfo: DockerInfo{DockerRef: img1}},
-		Manifest{DockerInfo: DockerInfo{DockerRef: img2}},
+		Manifest{BuildInfo: DockerInfo{DockerRef: img1}},
+		Manifest{BuildInfo: DockerInfo{DockerRef: img2}},
 		false,
 	},
 	{
-		Manifest{DockerInfo: DockerInfo{DockerRef: img1}},
-		Manifest{DockerInfo: DockerInfo{DockerRef: img1}},
+		Manifest{BuildInfo: DockerInfo{DockerRef: img1}},
+		Manifest{BuildInfo: DockerInfo{DockerRef: img1}},
 		true,
 	},
 	{
@@ -397,8 +397,8 @@ func TestManifestValidateMountRelativePath(t *testing.T) {
 	}
 
 	manifest := Manifest{
-		Name:       "test",
-		DockerInfo: DockerInfo{}.WithBuildDetails(fbInfo),
+		Name:      "test",
+		BuildInfo: DockerInfo{}.WithBuildDetails(fbInfo),
 	}
 	err := manifest.Validate()
 
