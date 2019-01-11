@@ -55,6 +55,8 @@ type DockerClient interface {
 	ImageInspectWithRaw(ctx context.Context, imageID string) (types.ImageInspect, []byte, error)
 	ImageList(ctx context.Context, options types.ImageListOptions) ([]types.ImageSummary, error)
 	ImageRemove(ctx context.Context, imageID string, options types.ImageRemoveOptions) ([]types.ImageDeleteResponseItem, error)
+
+	StreamLogs(ctx context.Context, cID container.ID, since time.Time) (io.ReadCloser, error)
 }
 
 type ExitError struct {
@@ -282,4 +284,38 @@ func (d *DockerCli) ExecInContainer(ctx context.Context, cID container.ID, cmd m
 	}
 
 	return nil
+}
+
+func (d *DockerCli) StreamLogs(ctx context.Context, cID container.ID, since time.Time) (io.ReadCloser, error) {
+	opts := types.ContainerLogsOptions{
+		Since:      since.String(),
+		Timestamps: true,
+		Follow:     true,
+	}
+	return d.Client.ContainerLogs(ctx, cID.String(), opts)
+
+	// args := []string{"-f", configPath, "logs", "-f", "-t", serviceName}
+	// cmd := exec.CommandContext(ctx, "docker-compose", args...)
+	// stdout, err := cmd.StdoutPipe()
+	// if err != nil {
+	// 	return nil, errors.Wrap(err, "making stdout pipe for `docker-compose logs`")
+	// }
+	//
+	// errBuf := bytes.Buffer{}
+	// cmd.Stderr = &errBuf
+	//
+	// err = cmd.Start()
+	// if err != nil {
+	// 	return nil, errors.Wrapf(err, "`docker-compose %s`",
+	// 		strings.Join(args, " "))
+	// }
+	//
+	// go func() {
+	// 	err = cmd.Wait()
+	// 	if err != nil {
+	// 		logger.Get(ctx).Debugf("cmd `docker-compose %s` exited with error: \"%v\" (stderr: %s)",
+	// 			strings.Join(args, " "), err, errBuf.String())
+	// 	}
+	// }()
+	// return stdout, nil
 }

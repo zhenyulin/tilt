@@ -6,7 +6,8 @@ import (
 	"io"
 	"time"
 
-	"github.com/windmilleng/tilt/internal/dockercompose"
+	"github.com/windmilleng/tilt/internal/container"
+	"github.com/windmilleng/tilt/internal/docker"
 	"github.com/windmilleng/tilt/internal/logger"
 	"github.com/windmilleng/tilt/internal/model"
 	"github.com/windmilleng/tilt/internal/store"
@@ -15,13 +16,13 @@ import (
 // Collects logs from running docker-compose services.
 type DockerComposeLogManager struct {
 	watches map[model.ManifestName]dockerComposeLogWatch
-	dcc     dockercompose.DockerComposeClient
+	dCli    docker.DockerClient
 }
 
-func NewDockerComposeLogManager(dcc dockercompose.DockerComposeClient) *DockerComposeLogManager {
+func NewDockerComposeLogManager(dCli docker.DockerClient) *DockerComposeLogManager {
 	return &DockerComposeLogManager{
 		watches: make(map[model.ManifestName]dockerComposeLogWatch),
-		dcc:     dcc,
+		dCli:    dCli,
 	}
 }
 
@@ -42,6 +43,8 @@ func (m *DockerComposeLogManager) diff(ctx context.Context, st store.RStore) (se
 			continue
 		}
 
+		cID := mt.State.DCResourceState().ContainerID
+
 		existing, isActive := m.watches[manifest.Name]
 		startWatchTime := time.Unix(0, 0)
 		if isActive {
@@ -61,7 +64,7 @@ func (m *DockerComposeLogManager) diff(ctx context.Context, st store.RStore) (se
 			ctx:             ctx,
 			cancel:          cancel,
 			name:            manifest.Name,
-			dcConfigPath:    manifest.DockerComposeTarget().ConfigPath,
+			cID:             cID,
 			startWatchTime:  startWatchTime,
 			terminationTime: make(chan time.Time, 1),
 		}
@@ -98,7 +101,7 @@ func (m *DockerComposeLogManager) consumeLogs(watch dockerComposeLogWatch, st st
 	}()
 
 	name := watch.name
-	readCloser, err := m.dcc.StreamLogs(watch.ctx, watch.dcConfigPath, watch.name.String())
+	readCloser, err := m.dCli.StreamLogs(watch.ctx, watch.cID, watch.startWatchTime)
 	if err != nil {
 		logger.Get(watch.ctx).Debugf("Error streaming %s logs: %v", name, err)
 		return
@@ -129,13 +132,9 @@ type dockerComposeLogWatch struct {
 	ctx             context.Context
 	cancel          func()
 	name            model.ManifestName
-	dcConfigPath    string
+	cID             container.ID
 	startWatchTime  time.Time
 	terminationTime chan time.Time
-
-	// TODO(maia): do we need to track these? (maybe if we implement with `docker logs <cID>`...)
-	// cID             container.ID
-	// cName           container.Name
 }
 
 type DockerComposeLogActionWriter struct {
