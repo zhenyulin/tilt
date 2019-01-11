@@ -253,7 +253,7 @@ func (d *dockerImageBuilder) PushImage(ctx context.Context, ref reference.NamedT
 	}
 
 	l.Infof("%sconnecting to repository", prefix)
-	cli := command.NewDockerCli(nil, writer, writer, true)
+	cli := command.NewDockerCli(nil, writer, writer, true, nil)
 
 	err = cli.Initialize(cliflags.NewClientOptions())
 	if err != nil {

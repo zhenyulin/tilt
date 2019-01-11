@@ -1,16 +1,20 @@
 package tiltfile
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"path"
 	"path/filepath"
 	"reflect"
-	"strings"
 
+	"github.com/docker/cli/cli/command"
+	"github.com/docker/cli/cli/command/stack/loader"
+	"github.com/docker/cli/cli/command/stack/options"
+	"github.com/docker/cli/cli/compose/types"
 	"github.com/pkg/errors"
-	"github.com/windmilleng/tilt/internal/dockercompose"
 	"github.com/windmilleng/tilt/internal/dockerfile"
 	"github.com/windmilleng/tilt/internal/model"
 	"go.starlark.net/starlark"
@@ -51,87 +55,6 @@ func (s *tiltfileState) dockerCompose(thread *starlark.Thread, fn *starlark.Buil
 	return starlark.None, nil
 }
 
-// Go representations of docker-compose.yml
-// (Add fields as we need to support more things)
-type dcConfig struct {
-	Services map[string]dcServiceConfig
-}
-
-type dcServiceConfig struct {
-	RawYAML []byte        // We store this to diff against when docker-compose.yml is edited to see if the manifest has changed
-	Build   dcBuildConfig `yaml:"build"`
-	Volumes Volumes
-}
-
-type Volumes struct {
-	Volumes []Volume
-}
-
-type Volume struct {
-	Source string
-}
-
-func (v *Volumes) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	var sliceType []interface{}
-	err := unmarshal(&sliceType)
-	if err != nil {
-		return errors.Wrap(err, "unmarshalling volumes")
-	}
-
-	for _, volume := range sliceType {
-		// Volumes syntax documented here: https://docs.docker.com/compose/compose-file/#volumes
-		// This implementation far from comprehensive. It will silently ignore:
-		// 1. "short" syntax using volume keys instead of paths
-		// 2. all "long" syntax volumes
-		// Ideally, we'd let the user know we didn't handle their case, but getting a ctx here is not easy
-		switch a := volume.(type) {
-		case string:
-			parts := strings.Split(a, ":")
-			v.Volumes = append(v.Volumes, Volume{Source: parts[0]})
-		}
-	}
-
-	return nil
-}
-
-// We use a custom Unmarshal method here so that we can store the RawYAML in addition
-// to unmarshaling the fields we care about into structs.
-func (c *dcConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	aux := struct {
-		Services map[string]interface{} `yaml:"services"`
-	}{}
-	err := unmarshal(&aux)
-	if err != nil {
-		return err
-	}
-
-	if c.Services == nil {
-		c.Services = make(map[string]dcServiceConfig)
-	}
-
-	for k, v := range aux.Services {
-		b, err := yaml.Marshal(v) // so we can unmarshal it again
-		if err != nil {
-			return err
-		}
-
-		svcConf := &dcServiceConfig{}
-		err = yaml.Unmarshal(b, svcConf)
-		if err != nil {
-			return err
-		}
-
-		svcConf.RawYAML = b
-		c.Services[k] = *svcConf
-	}
-	return nil
-}
-
-type dcBuildConfig struct {
-	Context    string `yaml:"context"`
-	Dockerfile string `yaml:"dockerfile"`
-}
-
 // A docker-compose service, according to Tilt.
 type dcService struct {
 	Name             string
@@ -144,34 +67,35 @@ type dcService struct {
 	DfContents    []byte
 }
 
-func (c dcConfig) GetService(name string) (dcService, error) {
-	svcConfig, ok := c.Services[name]
-	if !ok {
-		return dcService{}, fmt.Errorf("no service %s found in config", name)
-	}
-
-	df := svcConfig.Build.Dockerfile
-	if df == "" && svcConfig.Build.Context != "" {
+func dockerServiceToModel(config types.ServiceConfig) (dcService, error) {
+	df := config.Build.Dockerfile
+	if df == "" && config.Build.Context != "" {
 		// We only expect a Dockerfile if there's a build context specified.
 		df = "Dockerfile"
 	}
 
 	var mountedLocalDirs []string
-	for _, v := range svcConfig.Volumes.Volumes {
+	for _, v := range config.Volumes {
 		mountedLocalDirs = append(mountedLocalDirs, v.Source)
 	}
 
-	dfPath := filepath.Join(svcConfig.Build.Context, df)
+	yamlBytes, err := yaml.Marshal(config)
+	if err != nil {
+		return dcService{}, errors.Wrapf(err, "error serializing docker-compose config for %s", config.Name)
+	}
+
+	dfPath := filepath.Join(config.Build.Context, df)
 	svc := dcService{
-		Name:             name,
-		Context:          svcConfig.Build.Context,
+		Name:             config.Name,
+		Context:          config.Build.Context,
 		DfPath:           dfPath,
 		MountedLocalDirs: mountedLocalDirs,
-
-		ServiceConfig: svcConfig.RawYAML,
+		ServiceConfig:    yamlBytes,
 	}
 
 	if dfPath != "" {
+		cwd, err := os.Getwd()
+		fmt.Printf("cwd: %v err: %v\n", cwd, err)
 		dfContents, err := ioutil.ReadFile(dfPath)
 		if err != nil {
 			return svc, err
@@ -181,50 +105,23 @@ func (c dcConfig) GetService(name string) (dcService, error) {
 	return svc, nil
 }
 
-func svcNames(ctx context.Context, dcc dockercompose.DockerComposeClient, configPath string) ([]string, error) {
-	servicesText, err := dcc.Services(ctx, configPath)
-	if err != nil {
-		return nil, err
-	}
-
-	serviceNames := strings.Split(servicesText, "\n")
-
-	var result []string
-
-	for _, name := range serviceNames {
-		if name == "" {
-			continue
-		}
-		result = append(result, name)
-	}
-
-	return result, nil
-}
-
 func parseDCConfig(ctx context.Context, configPath string) ([]dcService, error) {
-	dcc := dockercompose.NewDockerComposeClient()
-	configOut, err := dcc.Config(ctx, configPath)
-	if err != nil {
-		return nil, err
+	w := &bytes.Buffer{}
+	cli := command.NewDockerCli(nil, w, w, true, nil)
+	dcOpts := options.Deploy{
+		Composefiles: []string{configPath},
 	}
-
-	config := dcConfig{}
-	err = yaml.Unmarshal([]byte(configOut), &config)
+	configDetails, err := loader.LoadComposefile(cli, dcOpts)
 	if err != nil {
-		return nil, err
-	}
-
-	svcNames, err := svcNames(ctx, dcc, configPath)
-	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "loading compose file")
 	}
 
 	var services []dcService
 
-	for _, name := range svcNames {
-		svc, err := config.GetService(name)
+	for _, dockerSvc := range configDetails.Services {
+		svc, err := dockerServiceToModel(dockerSvc)
 		if err != nil {
-			return nil, errors.Wrapf(err, "getting service %s", name)
+			return nil, errors.Wrapf(err, "getting service %s", dockerSvc.Name)
 		}
 		services = append(services, svc)
 	}
@@ -236,8 +133,8 @@ func (s *tiltfileState) dcServiceToManifest(service dcService, dcConfigPath stri
 	configFiles []string, err error) {
 	dcInfo := model.DockerComposeTarget{
 		ConfigPath: dcConfigPath,
-		YAMLRaw:    service.ServiceConfig,
 		DfRaw:      service.DfContents,
+		YAMLRaw:    service.ServiceConfig,
 	}
 
 	m := model.Manifest{

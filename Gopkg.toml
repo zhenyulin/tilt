@@ -57,6 +57,12 @@
   name = "k8s.io/client-go"
   version = "kubernetes-1.12.1"
 
+
+# docker-compose depends on this old version of gojsonschema
+[[override]]
+  name = "github.com/xeipuuv/gojsonschema"
+  revision = "93e72a773fade158921402d6a24c819b48aba29d"
+
 # these need to be here. https://github.com/golang/dep/issues/1415
 [[override]]
   name = "github.com/docker/docker"
