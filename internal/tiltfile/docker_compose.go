@@ -56,9 +56,11 @@ func (s *tiltfileState) dockerCompose(thread *starlark.Thread, fn *starlark.Buil
 
 // A docker-compose service, according to Tilt.
 type dcService struct {
-	Name             string
-	Context          string
-	DfPath           string
+	Name    string
+	Context string
+	DfPath  string
+	// these are the host machine paths that DC will mount from the local volume into the container
+	// https://docs.docker.com/compose/compose-file/#volumes
 	MountedLocalDirs []string
 
 	// Currently just use these to diff against when config files are edited to see if manifest has changed

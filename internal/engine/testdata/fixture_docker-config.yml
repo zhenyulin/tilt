@@ -1,13 +1,15 @@
-server:
-  build: .
-  links:
-    - redis
-  expose:
-    - "3000"
-  environment:
-    - NAME=TheServer
+version: "3.2"
+services:
+  server:
+    build: .
+    links:
+      - redis
+    expose:
+      - "3000"
+    environment:
+      - NAME=TheServer
 
-redis:
-  image: redis:alpine
-  expose:
-    - "6379"
+  redis:
+    image: redis:alpine
+    expose:
+      - "6379"

@@ -447,10 +447,6 @@ func updateEnvironment(environment map[string]*string, vars map[string]*string, 
 }
 
 func resolveBuildConfig(serviceConfig *types.ServiceConfig, workingDir string) {
-	if serviceConfig.Build.Dockerfile != "" && !path.IsAbs(serviceConfig.Build.Dockerfile){
-		serviceConfig.Build.Dockerfile = path.Join(workingDir, serviceConfig.Build.Dockerfile)
-	}
-
 	if serviceConfig.Build.Context != "" && !path.IsAbs(serviceConfig.Build.Context){
 		serviceConfig.Build.Context = path.Join(workingDir, serviceConfig.Build.Context)
 	}
