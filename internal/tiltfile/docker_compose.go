@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
-	"os"
 	"path"
 	"path/filepath"
 	"reflect"
@@ -94,8 +93,6 @@ func dockerServiceToModel(config types.ServiceConfig) (dcService, error) {
 	}
 
 	if dfPath != "" {
-		cwd, err := os.Getwd()
-		fmt.Printf("cwd: %v err: %v\n", cwd, err)
 		dfContents, err := ioutil.ReadFile(dfPath)
 		if err != nil {
 			return svc, err

@@ -104,8 +104,8 @@
   version = "v1.1.1"
 
 [[projects]]
-  branch = "master"
-  digest = "1:95d2670940329d0d02524559ca6543668beb4d5e49b505e4520614d23d2bccc4"
+  branch = "matt/expand_build_context"
+  digest = "1:b3dd21e7c8977d377727e76ef5bf4eb12a9c2e66afee1cc870c0b008554b8de3"
   name = "github.com/docker/cli"
   packages = [
     "cli",
@@ -132,7 +132,8 @@
     "types",
   ]
   pruneopts = "UT"
-  revision = "355a44171294080e788677355dcae6fc4ecec195"
+  revision = "b0b3446499787cc8781060df7cacee9123eb6078"
+  source = "github.com/windmilleng/docker-cli"
 
 [[projects]]
   branch = "master"

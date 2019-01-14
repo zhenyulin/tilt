@@ -40,9 +40,14 @@ volumes:
 func (f *fixture) simpleConfigFooYAML() string {
 	return fmt.Sprintf(`build:
   context: %s
-command: sleep 100
+command:
+- sleep
+- "100"
 ports:
-- 12312:12312/tcp`, f.JoinPath("foo"))
+- mode: ingress
+  target: 12312
+  published: 12312
+  protocol: tcp`, f.JoinPath("foo"))
 }
 
 func TestDockerComposeManifest(t *testing.T) {

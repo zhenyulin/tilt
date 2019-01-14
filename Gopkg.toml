@@ -80,6 +80,11 @@
   name = "github.com/windmilleng/fsevents"
   branch = "jazzdan/pull_in_test_fix"
 
+[[override]]
+  name = "github.com/docker/cli"
+  source = "github.com/windmilleng/docker-cli"
+  branch = "matt/expand_build_context"
+
 [prune]
   go-tests = true
   unused-packages = true
