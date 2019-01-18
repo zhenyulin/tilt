@@ -6,12 +6,12 @@ import (
 	"testing"
 
 	"github.com/docker/distribution/reference"
-	"github.com/opencontainers/go-digest"
+	digest "github.com/opencontainers/go-digest"
 	"github.com/stretchr/testify/assert"
 	"github.com/windmilleng/tilt/internal/container"
 	"github.com/windmilleng/tilt/internal/k8s/testyaml"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 )
 
 func TestInjectDigestSanchoYAML(t *testing.T) {
@@ -259,4 +259,40 @@ func TestEntityHasImage(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.False(t, match, "deployment yaml should not match image %s", img.Name())
+}
+
+func TestInjectDigestSanchoYAMLOtherFields(t *testing.T) {
+	entities, err := ParseYAMLFromString(testyaml.SanchoYAML)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(entities) != 1 {
+		t.Fatalf("Unexpected entities: %+v", entities)
+	}
+
+	entity := entities[0]
+	name := "gcr.io/some-project-162817/sancho"
+	digest := "sha256:2baf1f40105d9501fe319a8ec463fdf4325a2a5df445adf3f572f626253678c9"
+	newEntity, replaced, err := InjectImageDigestWithStrings(entity, name, digest, v1.PullIfNotPresent)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !replaced {
+		t.Errorf("Expected replaced: true. Actual: %v", replaced)
+	}
+
+	result, err := SerializeYAML([]K8sEntity{newEntity})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(result, fmt.Sprintf("image: %s@%s", name, digest)) {
+		t.Errorf("image name did not appear in serialized yaml: %s", result)
+	}
+
+	if !strings.Contains(result, fmt.Sprintf("value: %s@%s", name, digest)) {
+		t.Errorf("env did not appear in serialized yaml: %s", result)
+	}
 }

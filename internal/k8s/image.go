@@ -5,7 +5,7 @@ import (
 
 	"github.com/docker/distribution/reference"
 	"github.com/pkg/errors"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 )
 
 // Iterate through the fields of a k8s entity and
@@ -71,6 +71,7 @@ func InjectImageDigest(entity K8sEntity, injectRef reference.Named, policy v1.Pu
 }
 
 // HasImage indicates whether the given entity is tagged with the given image.
+// TODO(dmiller): does this need to check all fields?
 func (e K8sEntity) HasImage(image reference.Named) (bool, error) {
 	containers, err := extractContainers(&e)
 	if err != nil {
@@ -90,6 +91,7 @@ func (e K8sEntity) HasImage(image reference.Named) (bool, error) {
 	return false, nil
 }
 
+// TODO(dmiller): this needs to check all fields
 func (e K8sEntity) FindImages() ([]reference.Named, error) {
 	var result []reference.Named
 	containers, err := extractContainers(&e)

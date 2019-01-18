@@ -90,6 +90,8 @@ spec:
       - name: sancho
         image: gcr.io/some-project-162817/sancho
         env:
+          - name: OTHER_IMAGE
+            value: gcr.io/some-project-16281/sancho
           - name: token
             valueFrom:
               secretKeyRef:
