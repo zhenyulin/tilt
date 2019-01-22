@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"reflect"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -72,6 +72,23 @@ func extractContainers(obj interface{}) ([]*v1.Container, error) {
 			return nil, fmt.Errorf("extractContainers: expected Container, actual %T", e)
 		}
 		result[i] = c
+	}
+	return result, nil
+}
+
+func extractEnv(obj interface{}) ([]*v1.EnvVar, error) {
+	extracted, err := extractPointersOf(obj, reflect.TypeOf(v1.EnvVar{}))
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*v1.EnvVar, len(extracted))
+	for i, e := range extracted {
+		v, ok := e.(*v1.EnvVar)
+		if !ok {
+			return nil, fmt.Errorf("extractEnv: expected EnvVar, actual %T", e)
+		}
+		result[i] = v
 	}
 	return result, nil
 }
