@@ -76,6 +76,7 @@ func extractContainers(obj interface{}) ([]*v1.Container, error) {
 	return result, nil
 }
 
+// TODO(dmiller): test this
 func extractEnv(obj interface{}) ([]*v1.EnvVar, error) {
 	extracted, err := extractPointersOf(obj, reflect.TypeOf(v1.EnvVar{}))
 	if err != nil {
