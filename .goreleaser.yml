@@ -26,3 +26,18 @@ changelog:
     exclude:
     - '^docs:'
     - '^test:'
+brew:
+  github:
+    owner: windmilleng
+    name: homebrew-tap
+  commit_author:
+    name: Windmill Engineering
+    email: hi@windmill.engineering
+  folder: Formula
+  homepage: "https://tilt.build/"
+  description: "Local Kubernetes development with no stress"
+  dependencies:
+    - docker
+    - kubernetes-cli
+  test: |
+    system "#{bin}/tilt version"
