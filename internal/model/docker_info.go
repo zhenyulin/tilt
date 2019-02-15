@@ -77,6 +77,16 @@ func (i ImageTarget) IsStaticBuild() bool {
 	return ok
 }
 
+func (i ImageTarget) MaybeFastBuildInfo() *FastBuild {
+	switch details := i.BuildDetails.(type) {
+	case FastBuild:
+		return &details
+	case CustomBuild:
+		return details.Fast
+	}
+	return nil
+}
+
 func (i ImageTarget) FastBuildInfo() FastBuild {
 	ret, _ := i.BuildDetails.(FastBuild)
 	return ret
@@ -179,6 +189,8 @@ func (FastBuild) buildDetails() {}
 type CustomBuild struct {
 	Command string
 	Deps    []string
+
+	Fast *FastBuild
 }
 
 func (CustomBuild) buildDetails() {}

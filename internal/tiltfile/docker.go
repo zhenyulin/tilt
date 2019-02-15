@@ -168,21 +168,65 @@ func (s *tiltfileState) customBuild(thread *starlark.Thread, fn *starlark.Builti
 		localDeps = append(localDeps, p.path)
 	}
 
-	r := &dockerImage{
+	img := &dockerImage{
 		ref:           ref,
 		customCommand: command,
 		customDeps:    localDeps,
 	}
 
-	err = s.buildIndex.addImage(r)
+	err = s.buildIndex.addImage(img)
 	if err != nil {
 		return nil, err
 	}
 
-	return starlark.None, nil
+	return &customBuild{s: s, img: img}, nil
 }
 
-// XXX(dbentley): customBuild has addFastBuild
+type customBuild struct {
+	s   *tiltfileState
+	img *dockerImage
+}
+
+var _ starlark.Value = &customBuild{}
+
+func (b *customBuild) String() string {
+	return fmt.Sprintf("custom_build(%q)", b.img.ref.Name())
+}
+
+func (b *customBuild) Type() string {
+	return "custom_build"
+}
+
+func (b *customBuild) Freeze() {}
+
+func (b *customBuild) Truth() starlark.Bool {
+	return true
+}
+
+func (b *customBuild) Hash() (uint32, error) {
+	return 0, fmt.Errorf("unhashable type: custom_build")
+}
+
+const (
+	addFastBuildN = "add_fast_build"
+)
+
+func (b *customBuild) Attr(name string) (starlark.Value, error) {
+	switch name {
+	case addFastBuildN:
+		return starlark.NewBuiltin(name, b.addFastBuild), nil
+	default:
+		return starlark.None, nil
+	}
+}
+
+func (b *customBuild) AttrNames() []string {
+	return []string{addFastBuildN}
+}
+
+func (b *customBuild) addFastBuild(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	return &fastBuild{s: b.s, img: b.img}, nil
+}
 
 func (s *tiltfileState) fastBuild(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 

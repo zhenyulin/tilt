@@ -378,10 +378,19 @@ func (s *tiltfileState) imgTargetsForRefs(refs []reference.Named) ([]model.Image
 				HotReload:      image.hotReload,
 			})
 		case image.customCommand != "":
-			iTarget = iTarget.WithBuildDetails(model.CustomBuild{
+			r := model.CustomBuild{
 				Command: image.customCommand,
 				Deps:    image.customDeps,
-			})
+			}
+			if len(image.mounts) > 0 || len(image.steps) > 0 {
+				r.Fast = &model.FastBuild{
+					Mounts:    s.mountsToDomain(image),
+					Steps:     image.steps,
+					HotReload: image.hotReload,
+				}
+			}
+			iTarget = iTarget.WithBuildDetails(r)
+			// TODO(dbentley): validate that mounts is a subset of deps
 		default:
 			return nil, fmt.Errorf("no build info for image %s", image.ref)
 		}

@@ -46,6 +46,24 @@ func (idx *buildIndex) addImage(img *dockerImage) error {
 	return nil
 }
 
+func (idx *buildIndex) getImage(ref reference.Named) *dockerImage {
+	refTagged, hasTag := ref.(reference.NamedTagged)
+	if hasTag {
+		key := fmt.Sprintf("%s:%s", ref.Name(), refTagged.Tag())
+		img, exists := idx.taggedImages[key]
+		if exists {
+			return img
+		}
+	}
+
+	key := ref.Name()
+	img, exists := idx.nameOnlyImages[key]
+	if exists {
+		return img
+	}
+	return nil
+}
+
 // Deploy targets (like k8s yaml and docker-compose yaml) have reference to images
 // Check to see if we have a build target for that image.
 func (idx *buildIndex) matchRefInDeployTarget(ref reference.Named) *dockerImage {

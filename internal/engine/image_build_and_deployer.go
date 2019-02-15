@@ -97,7 +97,9 @@ func (ibd *ImageBuildAndDeployer) BuildAndDeploy(ctx context.Context, st store.R
 			Image: ref,
 		}
 		refs = append(refs, ref)
-		anyFastBuild = anyFastBuild || iTarget.IsFastBuild()
+		if iTarget.MaybeFastBuildInfo() != nil {
+			anyFastBuild = true
+		}
 	}
 
 	// (If we pass an empty list of refs here (as we will do if only deploying
