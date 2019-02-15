@@ -199,6 +199,8 @@ func (c *FakeClient) ImageRemove(ctx context.Context, imageID string, options ty
 	return nil, nil
 }
 
+func (c *FakeClient) Env() []string { return nil }
+
 var _ Client = &FakeClient{}
 
 type fakeDockerResponse struct {

@@ -68,6 +68,8 @@ type Client interface {
 	ImageInspectWithRaw(ctx context.Context, imageID string) (types.ImageInspect, []byte, error)
 	ImageList(ctx context.Context, options types.ImageListOptions) ([]types.ImageSummary, error)
 	ImageRemove(ctx context.Context, imageID string, options types.ImageRemoveOptions) ([]types.ImageDeleteResponseItem, error)
+
+	Env() []string
 }
 
 type ExitError struct {
@@ -91,13 +93,17 @@ type Cli struct {
 	*client.Client
 	supportsBuildkit bool
 
+	env []string
+
 	creds     dockerCreds
 	initError error
 	initDone  chan bool
 }
 
 func DefaultClient(ctx context.Context, env k8s.Env) (*Cli, error) {
+	var envList []string
 	envFunc := os.Getenv
+
 	if env == k8s.EnvMinikube {
 		envMap, err := minikube.DockerEnv(ctx)
 		if err != nil {
@@ -105,6 +111,9 @@ func DefaultClient(ctx context.Context, env k8s.Env) (*Cli, error) {
 		}
 
 		envFunc = func(key string) string { return envMap[key] }
+		for k, v := range envMap {
+			envList = append(envList, fmt.Sprintf("%s=%s", k, v))
+		}
 	} else if env == k8s.EnvMicroK8s {
 		envFunc = func(key string) string {
 			val := os.Getenv(key)
@@ -113,6 +122,8 @@ func DefaultClient(ctx context.Context, env k8s.Env) (*Cli, error) {
 			}
 			return val
 		}
+		// TODO(dbentley): why do we allow DOCKER_HOST to be shadowed for microK8s but not for minikube?
+		envList = []string{fmt.Sprintf("DOCKER_HOST=%s", microK8sDockerHost)}
 	}
 
 	opts, err := CreateClientOpts(ctx, envFunc)
@@ -138,6 +149,7 @@ func DefaultClient(ctx context.Context, env k8s.Env) (*Cli, error) {
 		Client:           d,
 		supportsBuildkit: SupportsBuildkit(serverVersion),
 		initDone:         make(chan bool),
+		env:              envList,
 	}
 
 	go cli.backgroundInit(ctx)
@@ -402,4 +414,8 @@ func (c *Cli) ExecInContainer(ctx context.Context, cID container.ID, cmd model.C
 	}
 
 	return nil
+}
+
+func (c *Cli) Env() []string {
+	return c.env
 }

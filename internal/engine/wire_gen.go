@@ -32,13 +32,14 @@ func provideBuildAndDeployer(ctx context.Context, docker2 docker.Client, k8s2 k8
 	dockerImageBuilder := build.NewDockerImageBuilder(docker2, console, writer, labels)
 	imageBuilder := build.DefaultImageBuilder(dockerImageBuilder)
 	cacheBuilder := build.NewCacheBuilder(docker2)
+	clock := build.ProvideClock()
+	execCustomBuilder := build.NewExecCustomBuilder(docker2, clock)
 	engineUpdateMode, err := ProvideUpdateMode(updateMode, env)
 	if err != nil {
 		return nil, err
 	}
-	clock := build.ProvideClock()
-	imageBuildAndDeployer := NewImageBuildAndDeployer(imageBuilder, cacheBuilder, k8s2, env, memoryAnalytics, engineUpdateMode, clock)
-	engineImageAndCacheBuilder := NewImageAndCacheBuilder(imageBuilder, cacheBuilder, engineUpdateMode)
+	imageBuildAndDeployer := NewImageBuildAndDeployer(imageBuilder, cacheBuilder, execCustomBuilder, k8s2, env, memoryAnalytics, engineUpdateMode, clock)
+	engineImageAndCacheBuilder := NewImageAndCacheBuilder(imageBuilder, cacheBuilder, execCustomBuilder, engineUpdateMode)
 	dockerComposeBuildAndDeployer := NewDockerComposeBuildAndDeployer(dcc, docker2, engineImageAndCacheBuilder, clock)
 	buildOrder := DefaultBuildOrder(syncletBuildAndDeployer, localContainerBuildAndDeployer, imageBuildAndDeployer, dockerComposeBuildAndDeployer, env, engineUpdateMode)
 	compositeBuildAndDeployer := NewCompositeBuildAndDeployer(buildOrder)
@@ -56,6 +57,8 @@ func provideImageBuildAndDeployer(ctx context.Context, docker2 docker.Client, kC
 	dockerImageBuilder := build.NewDockerImageBuilder(docker2, console, writer, labels)
 	imageBuilder := build.DefaultImageBuilder(dockerImageBuilder)
 	cacheBuilder := build.NewCacheBuilder(docker2)
+	clock := build.ProvideClock()
+	execCustomBuilder := build.NewExecCustomBuilder(docker2, clock)
 	env := _wireEnvValue
 	memoryAnalytics := analytics.NewMemoryAnalytics()
 	updateModeFlag := _wireUpdateModeFlagValue
@@ -63,8 +66,7 @@ func provideImageBuildAndDeployer(ctx context.Context, docker2 docker.Client, kC
 	if err != nil {
 		return nil, err
 	}
-	clock := build.ProvideClock()
-	imageBuildAndDeployer := NewImageBuildAndDeployer(imageBuilder, cacheBuilder, kClient, env, memoryAnalytics, updateMode, clock)
+	imageBuildAndDeployer := NewImageBuildAndDeployer(imageBuilder, cacheBuilder, execCustomBuilder, kClient, env, memoryAnalytics, updateMode, clock)
 	return imageBuildAndDeployer, nil
 }
 
@@ -80,14 +82,15 @@ func provideDockerComposeBuildAndDeployer(ctx context.Context, dcCli dockercompo
 	dockerImageBuilder := build.NewDockerImageBuilder(dCli, console, writer, labels)
 	imageBuilder := build.DefaultImageBuilder(dockerImageBuilder)
 	cacheBuilder := build.NewCacheBuilder(dCli)
+	clock := build.ProvideClock()
+	execCustomBuilder := build.NewExecCustomBuilder(dCli, clock)
 	updateModeFlag := _wireEngineUpdateModeFlagValue
 	env := _wireK8sEnvValue
 	updateMode, err := ProvideUpdateMode(updateModeFlag, env)
 	if err != nil {
 		return nil, err
 	}
-	engineImageAndCacheBuilder := NewImageAndCacheBuilder(imageBuilder, cacheBuilder, updateMode)
-	clock := build.ProvideClock()
+	engineImageAndCacheBuilder := NewImageAndCacheBuilder(imageBuilder, cacheBuilder, execCustomBuilder, updateMode)
 	dockerComposeBuildAndDeployer := NewDockerComposeBuildAndDeployer(dcCli, dCli, engineImageAndCacheBuilder, clock)
 	return dockerComposeBuildAndDeployer, nil
 }
@@ -99,7 +102,7 @@ var (
 
 // wire.go:
 
-var DeployerBaseWireSet = wire.NewSet(build.DefaultConsole, build.DefaultOut, wire.Value(dockerfile.Labels{}), wire.Value(UpperReducer), build.DefaultImageBuilder, build.NewCacheBuilder, build.NewDockerImageBuilder, NewImageBuildAndDeployer, build.NewContainerUpdater, NewSyncletBuildAndDeployer,
+var DeployerBaseWireSet = wire.NewSet(build.DefaultConsole, build.DefaultOut, wire.Value(dockerfile.Labels{}), wire.Value(UpperReducer), build.DefaultImageBuilder, build.NewCacheBuilder, build.NewDockerImageBuilder, build.NewExecCustomBuilder, wire.Bind(new(build.CustomBuilder), new(build.ExecCustomBuilder)), NewImageBuildAndDeployer, build.NewContainerUpdater, NewSyncletBuildAndDeployer,
 	NewLocalContainerBuildAndDeployer,
 	NewDockerComposeBuildAndDeployer,
 	NewImageAndCacheBuilder,
