@@ -364,11 +364,20 @@ func (s *tiltfileState) imgTargetsForRefs(refs []reference.Named) ([]model.Image
 
 		switch {
 		case !image.staticBuildPath.Empty():
-			iTarget = iTarget.WithBuildDetails(model.StaticBuild{
+			r := model.StaticBuild{
 				Dockerfile: image.staticDockerfile.String(),
 				BuildPath:  string(image.staticBuildPath.path),
 				BuildArgs:  image.staticBuildArgs,
-			})
+			}
+			if len(image.mounts) > 0 || len(image.steps) > 0 {
+				r.Fast = &model.FastBuild{
+					Mounts:    s.mountsToDomain(image),
+					Steps:     image.steps,
+					HotReload: image.hotReload,
+				}
+			}
+			iTarget = iTarget.WithBuildDetails(r)
+			// TODO(dbentley): validate that mounts is a subset of BuildPath
 		case !image.baseDockerfilePath.Empty():
 			iTarget = iTarget.WithBuildDetails(model.FastBuild{
 				BaseDockerfile: image.baseDockerfile.String(),

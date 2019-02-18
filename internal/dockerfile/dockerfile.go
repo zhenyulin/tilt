@@ -2,6 +2,7 @@ package dockerfile
 
 import (
 	"fmt"
+	"log"
 	"path/filepath"
 	"strings"
 
@@ -171,4 +172,83 @@ func nodeToMount(node *parser.Node, context string) (model.Mount, error) {
 
 func (d Dockerfile) String() string {
 	return string(d)
+}
+
+const (
+	START_CLOUD_SYNC = "true tilt-magic start_cloud_sync"
+)
+
+func (d Dockerfile) InferFastBuild(context string) ([]string, *FastBuild, error) {
+	var nodes []*parser.Node
+
+	started := false
+
+	err := d.traverse(func(node *parser.Node) error {
+		switch node.Value {
+		case command.Run:
+			if node.Next != nil && node.Next.Value == START_CLOUD_SYNC {
+				started = true
+				return nil
+			}
+			if !started {
+				return nil
+			}
+
+			nodes = append(nodes, node)
+		case command.Add, command.Copy:
+			if !started {
+				return nil
+			}
+			nodes = append(nodes, node)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if !started {
+		return nil, nil, nil
+	}
+
+	var mounts []Mount
+	var triggers []string
+	var steps []model.Step
+
+	for len(nodes) > 0 {
+		node := nodes[0]
+		nodes = nodes[1:]
+		switch node.Value {
+		case command.Add, command.Copy:
+			m, err := nodeToMount(node, "")
+			if err != nil {
+				return nil, nil, err
+			}
+			mounts = append(mounts, Mount{Src: m.LocalPath, MountPoint: m.ContainerPath})
+			triggers = append(triggers, m.LocalPath) // TODO(dbentley): figure out if local path is a file or a dir
+		case command.Run:
+			step := model.ToStep(context, model.ToShellCmd(node.Next.Value))
+			addsLeft := false
+			for _, n := range nodes {
+				switch n.Value {
+				case command.Add, command.Copy:
+					addsLeft = true
+				}
+			}
+			if addsLeft {
+				step.Triggers = triggers
+			}
+			steps = append(steps, step)
+		}
+	}
+
+	return nil, &FastBuild{Mounts: mounts, Steps: steps}, nil
+}
+
+func huh(node *parser.Node) {
+	if node == nil {
+		return
+	}
+	log.Printf("huh %q", node.Value)
+	huh(node.Next)
 }

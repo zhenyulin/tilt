@@ -3,6 +3,7 @@ package tiltfile
 import (
 	"fmt"
 	"io/ioutil"
+	"log"
 	"path/filepath"
 
 	"github.com/docker/distribution/reference"
@@ -113,20 +114,90 @@ func (s *tiltfileState) dockerBuild(thread *starlark.Thread, fn *starlark.Builti
 		return nil, err
 	}
 
+	df := dockerfile.Dockerfile(dockerfileContents)
+
 	r := &dockerImage{
 		staticDockerfilePath: dockerfilePath,
-		staticDockerfile:     dockerfile.Dockerfile(dockerfileContents),
+		staticDockerfile:     df,
 		staticBuildPath:      context,
 		ref:                  ref,
 		staticBuildArgs:      sba,
 		cachePaths:           cachePaths,
 	}
+
+	// TODO(dbentley): allow turning off inference
+	dfcp, dffb, err := df.InferFastBuild(context.path)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(r.cachePaths) > 0 && len(dfcp) > 0 {
+		return nil, fmt.Errorf("cachePaths both explicitly passed (%q) and inferred (%q); at most one can be set", r.cachePaths, dfcp)
+	}
+	r.cachePaths = dfcp
+
+	if dffb != nil {
+		var mounts []mount
+		for _, m := range dffb.Mounts {
+			mounts = append(mounts, mount{src: context.join(m.Src), mountPoint: m.MountPoint})
+		}
+		log.Printf("Huh %+v", dffb)
+		r.mounts = mounts
+		r.steps = dffb.Steps
+		r.hotReload = dffb.HotReload
+	}
+
 	err = s.buildIndex.addImage(r)
 	if err != nil {
 		return nil, err
 	}
 
-	return starlark.None, nil
+	return &dockerBuild{s: s, img: r}, nil
+}
+
+type dockerBuild struct {
+	s   *tiltfileState
+	img *dockerImage
+}
+
+var _ starlark.Value = &dockerBuild{}
+
+func (b *dockerBuild) String() string {
+	return fmt.Sprintf("docker_build(%q)", b.img.ref.Name())
+}
+
+func (b *dockerBuild) Type() string {
+	return "docker_build"
+}
+
+func (b *dockerBuild) Freeze() {}
+
+func (b *dockerBuild) Truth() starlark.Bool {
+	return true
+}
+
+func (b *dockerBuild) Hash() (uint32, error) {
+	return 0, fmt.Errorf("unhashable type: docker_build")
+}
+
+func (b *dockerBuild) Attr(name string) (starlark.Value, error) {
+	switch name {
+	case addFastBuildN:
+		return starlark.NewBuiltin(name, b.addFastBuild), nil
+	default:
+		return starlark.None, nil
+	}
+}
+
+func (b *dockerBuild) AttrNames() []string {
+	return []string{addFastBuildN}
+}
+
+func (b *dockerBuild) addFastBuild(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if len(b.img.mounts) > 0 || len(b.img.steps) > 0 {
+		return nil, fmt.Errorf("fast build is already set for %v", b.img.ref)
+	}
+	return &fastBuild{s: b.s, img: b.img}, nil
 }
 
 func (s *tiltfileState) customBuild(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {

@@ -81,6 +81,8 @@ func (i ImageTarget) MaybeFastBuildInfo() *FastBuild {
 	switch details := i.BuildDetails.(type) {
 	case FastBuild:
 		return &details
+	case StaticBuild:
+		return details.Fast
 	case CustomBuild:
 		return details.Fast
 	}
@@ -169,6 +171,8 @@ type StaticBuild struct {
 	Dockerfile string
 	BuildPath  string // the absolute path to the files
 	BuildArgs  DockerBuildArgs
+
+	Fast *FastBuild
 }
 
 func (StaticBuild) buildDetails() {}

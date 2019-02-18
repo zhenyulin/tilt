@@ -95,7 +95,7 @@ func (c *upCmd) run(ctx context.Context, args []string) error {
 	l := engine.NewLogActionLogger(ctx, upper.Dispatch)
 	ctx = logger.WithLogger(ctx, l)
 
-	log.SetOutput(l.Writer(logger.InfoLvl))
+	// log.SetOutput(l.Writer(logger.InfoLvl))
 	klog.SetOutput(l.Writer(logger.InfoLvl))
 
 	logOutput(fmt.Sprintf("Starting Tilt (%s)…", buildStamp()))
