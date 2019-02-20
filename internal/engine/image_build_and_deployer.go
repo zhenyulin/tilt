@@ -185,7 +185,7 @@ func (ibd *ImageBuildAndDeployer) deploy(ctx context.Context, st store.RStore, p
 
 					if ibd.injectSynclet && needsSynclet {
 						var sidecarInjected bool
-						e, sidecarInjected, err = sidecar.InjectSyncletSidecar(e, ref)
+						e, sidecarInjected, err = sidecar.InjectSyncletSidecar(e, ref, ibd.runtime)
 						if err != nil {
 							return err
 						}

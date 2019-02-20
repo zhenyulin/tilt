@@ -10,15 +10,22 @@ import (
 	"github.com/windmilleng/tilt/internal/container"
 	"github.com/windmilleng/tilt/internal/docker"
 	"github.com/windmilleng/tilt/internal/k8s"
+	"github.com/windmilleng/tilt/internal/k8s/cri"
 )
 
 // Injectors from wire.go:
 
-func WireSynclet(ctx context.Context, env k8s.Env, runtime container.Runtime) (*Synclet, error) {
+func WireDockerSynclet(ctx context.Context, env k8s.Env, runtime container.Runtime) (*DockerSynclet, error) {
 	cli, err := docker.DefaultClient(ctx, env, runtime)
 	if err != nil {
 		return nil, err
 	}
-	synclet := NewSynclet(cli)
-	return synclet, nil
+	dockerSynclet := NewDockerSynclet(cli)
+	return dockerSynclet, nil
+}
+
+func WireCriSynclet(ctx context.Context, criEndpoint cri.Endpoint) (*CriSynclet, error) {
+	cliClient := cri.NewCliClient(criEndpoint)
+	criSynclet := NewCriSynclet(cliClient)
+	return criSynclet, nil
 }

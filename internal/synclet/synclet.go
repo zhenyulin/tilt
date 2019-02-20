@@ -20,15 +20,20 @@ import (
 
 const Port = 23551
 
-type Synclet struct {
+type Synclet interface {
+	UpdateContainer(ctx context.Context, containerId container.ID, tarArchive []byte,
+		filesToDelete []string, commands []model.Cmd, hotReload bool) error
+}
+
+type DockerSynclet struct {
 	dCli docker.Client
 }
 
-func NewSynclet(dCli docker.Client) *Synclet {
-	return &Synclet{dCli: dCli}
+func NewDockerSynclet(dCli docker.Client) *DockerSynclet {
+	return &DockerSynclet{dCli: dCli}
 }
 
-func (s Synclet) writeFiles(ctx context.Context, containerId container.ID, tarArchive []byte) error {
+func (s DockerSynclet) writeFiles(ctx context.Context, containerId container.ID, tarArchive []byte) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Synclet-writeFiles")
 	defer span.Finish()
 
@@ -39,7 +44,7 @@ func (s Synclet) writeFiles(ctx context.Context, containerId container.ID, tarAr
 	return s.dCli.CopyToContainerRoot(ctx, containerId.String(), bytes.NewBuffer(tarArchive))
 }
 
-func (s Synclet) rmFiles(ctx context.Context, containerId container.ID, filesToDelete []string) error {
+func (s DockerSynclet) rmFiles(ctx context.Context, containerId container.ID, filesToDelete []string) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Synclet-rmFiles")
 	defer span.Finish()
 
@@ -61,7 +66,7 @@ func (s Synclet) rmFiles(ctx context.Context, containerId container.ID, filesToD
 	return nil
 }
 
-func (s Synclet) execCmds(ctx context.Context, containerId container.ID, cmds []model.Cmd) error {
+func (s DockerSynclet) execCmds(ctx context.Context, containerId container.ID, cmds []model.Cmd) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Synclet-execCommands")
 	defer span.Finish()
 
@@ -78,14 +83,14 @@ func (s Synclet) execCmds(ctx context.Context, containerId container.ID, cmds []
 	return nil
 }
 
-func (s Synclet) restartContainer(ctx context.Context, containerId container.ID) error {
+func (s DockerSynclet) restartContainer(ctx context.Context, containerId container.ID) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Synclet-restartContainer")
 	defer span.Finish()
 
 	return s.dCli.ContainerRestartNoWait(ctx, containerId.String())
 }
 
-func (s Synclet) UpdateContainer(
+func (s DockerSynclet) UpdateContainer(
 	ctx context.Context,
 	containerId container.ID,
 	tarArchive []byte,

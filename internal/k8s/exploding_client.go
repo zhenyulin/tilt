@@ -67,3 +67,7 @@ func (ec *explodingClient) ConnectedToCluster(ctx context.Context) error {
 func (ec *explodingClient) ContainerRuntime(ctx context.Context) container.Runtime {
 	return container.RuntimeUnknown
 }
+
+func (ec *explodingClient) Measure(ctx context.Context, podID PodID, ns Namespace, containerID string) error {
+	return errors.Wrap(ec.err, "could not set up k8s client")
+}

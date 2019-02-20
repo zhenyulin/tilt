@@ -9,20 +9,23 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc"
+
 	"github.com/windmilleng/tilt/internal/container"
 	"github.com/windmilleng/tilt/internal/k8s"
+	"github.com/windmilleng/tilt/internal/k8s/cri"
 	"github.com/windmilleng/tilt/internal/logger"
 	"github.com/windmilleng/tilt/internal/options"
 	"github.com/windmilleng/tilt/internal/synclet"
 	"github.com/windmilleng/tilt/internal/synclet/proto"
 	"github.com/windmilleng/tilt/internal/tracer"
-	"google.golang.org/grpc"
 )
 
 type SyncletCmd struct {
-	port    int
-	debug   bool
-	verbose bool
+	port        int
+	debug       bool
+	verbose     bool
+	criEndpoint string
 }
 
 func (s *SyncletCmd) Register() *cobra.Command {
@@ -37,6 +40,7 @@ func (s *SyncletCmd) Register() *cobra.Command {
 	cmd.Flags().BoolVarP(&s.debug, "debug", "d", false, "Enable debug logging")
 	cmd.Flags().BoolVarP(&s.verbose, "verbose", "v", false, "Enable verbose logging")
 	cmd.Flags().IntVar(&s.port, "port", synclet.Port, "Server port")
+	cmd.Flags().StringVar(&s.criEndpoint, "cri-endpoint", "", "Endpoint of CRI container runtime service")
 
 	return cmd
 }
@@ -72,10 +76,12 @@ func (sc *SyncletCmd) run() {
 
 	serv := grpc.NewServer(opts...)
 
-	// TODO(Matt) fix this so either we don't need an k8s env to instantiate a synclet, or
-	// so that we can still detect env inside of containers w/o kubectl
-	// TODO(nick): Also fix this to detect the container runtime inside k8s.
-	s, err := synclet.WireSynclet(ctx, k8s.EnvNone, container.RuntimeDocker)
+	var s synclet.Synclet
+	if sc.criEndpoint == "" {
+		s, err = synclet.WireDockerSynclet(ctx, k8s.EnvUnknown, container.RuntimeDocker)
+	} else {
+		s, err = synclet.WireCriSynclet(ctx, cri.Endpoint(sc.criEndpoint))
+	}
 	if err != nil {
 		log.Fatalf("failed to wire synclet: %v", err)
 	}

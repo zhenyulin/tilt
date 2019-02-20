@@ -7,17 +7,28 @@ import (
 	"context"
 
 	"github.com/google/wire"
+
 	"github.com/windmilleng/tilt/internal/container"
 	"github.com/windmilleng/tilt/internal/docker"
 	"github.com/windmilleng/tilt/internal/k8s"
+	"github.com/windmilleng/tilt/internal/k8s/cri"
 )
 
-func WireSynclet(ctx context.Context, env k8s.Env, runtime container.Runtime) (*Synclet, error) {
+func WireDockerSynclet(ctx context.Context, env k8s.Env, runtime container.Runtime) (*DockerSynclet, error) {
 	wire.Build(
 		docker.DefaultClient,
 		wire.Bind(new(docker.Client), new(docker.Cli)),
 
-		NewSynclet,
+		NewDockerSynclet,
+	)
+	return nil, nil
+}
+
+func WireCriSynclet(ctx context.Context, criEndpoint cri.Endpoint) (*CriSynclet, error) {
+	wire.Build(
+		cri.NewCliClient,
+		wire.Bind(new(cri.Client), new(cri.CliClient)),
+		NewCriSynclet,
 	)
 	return nil, nil
 }

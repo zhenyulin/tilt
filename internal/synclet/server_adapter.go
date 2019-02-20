@@ -9,10 +9,10 @@ import (
 )
 
 type GRPCServer struct {
-	del *Synclet
+	del Synclet
 }
 
-func NewGRPCServer(del *Synclet) *GRPCServer {
+func NewGRPCServer(del Synclet) *GRPCServer {
 	return &GRPCServer{del: del}
 }
 

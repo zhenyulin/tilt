@@ -267,6 +267,10 @@ func (c *FakeK8sClient) ContainerRuntime(ctx context.Context) container.Runtime 
 	return container.RuntimeDocker
 }
 
+func (c *FakeK8sClient) Measure(ctx context.Context, podID PodID, ns Namespace, containerID string) error {
+	return fmt.Errorf("Measure not implemented for fake client")
+}
+
 type BufferCloser struct {
 	*bytes.Buffer
 }

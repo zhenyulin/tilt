@@ -22,9 +22,11 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
 	apiv1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/remotecommand"
 
 	// Client auth plugins! They will auto-init if we import them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -89,6 +91,8 @@ type Client interface {
 	ConnectedToCluster(ctx context.Context) error
 
 	ContainerRuntime(ctx context.Context) container.Runtime
+
+	Measure(ctx context.Context, podID PodID, ns Namespace, containerID string) error
 }
 
 type K8sClient struct {
@@ -198,6 +202,30 @@ func ServiceURL(service *v1.Service, ip NodeIP) (*url.URL, error) {
 	}
 
 	return nil, nil
+}
+
+func (k K8sClient) Measure(ctx context.Context, podID PodID, ns Namespace, containerID string) error {
+	req := k.core.RESTClient().Post().Namespace(string(ns)).Resource("pods").Name(string(podID)).SubResource("exec").VersionedParams(&v1.PodExecOptions{
+		Container: containerID,
+		Command:   []string{"cat"},
+		Stdin:     true,
+		Stdout:    true,
+		Stderr:    true,
+	}, scheme.ParameterCodec)
+
+	exec, err := remotecommand.NewSPDYExecutor(k.restConfig, "POST", req.URL())
+	if err != nil {
+		return err
+	}
+
+	l := logger.Get(ctx).Writer(logger.InfoLvl)
+	// Connect this process' std{in,out,err} to the remote shell process.
+	err = exec.Stream(remotecommand.StreamOptions{
+		Stdin:  bytes.NewBufferString("foo"),
+		Stdout: l,
+		Stderr: l,
+	})
+	return err
 }
 
 func (k K8sClient) Upsert(ctx context.Context, entities []K8sEntity) error {

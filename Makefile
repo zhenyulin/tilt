@@ -31,8 +31,8 @@ install:
 	./hide_tbd_warning go install ./...
 
 install-dev:
-	@if ! [[ -e "$(SYNCLET_DEV_IMAGE_TAG_FILE)" ]]; then echo "No dev synclet found. Run make synclet-dev."; exit 1; fi
-	./hide_tbd_warning go install -ldflags "-X 'github.com/windmilleng/tilt/internal/synclet/sidecar.SyncletTag=$$(<$(SYNCLET_DEV_IMAGE_TAG_FILE))'" ./...
+	@if ! [ -e "$(SYNCLET_DEV_IMAGE_TAG_FILE)" ]; then echo "No dev synclet found. Run make synclet-dev."; exit 1; fi
+	./hide_tbd_warning go install -ldflags "-X 'github.com/windmilleng/tilt/internal/synclet/sidecar.SyncletTag="`cat $(SYNCLET_DEV_IMAGE_TAG_FILE)`"'" ./...
 
 define synclet-build-dev
 	echo $1 > $(SYNCLET_DEV_IMAGE_TAG_FILE)
@@ -125,4 +125,3 @@ synclet-release:
 
 release:
 	goreleaser --rm-dist
-

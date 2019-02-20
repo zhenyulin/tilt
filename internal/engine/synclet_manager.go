@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/windmilleng/tilt/internal/logger"
@@ -148,10 +149,20 @@ func (sm SyncletManager) OnChange(ctx context.Context, store store.RStore) {
 func (sm SyncletManager) ClientForPod(ctx context.Context, podID k8s.PodID, ns k8s.Namespace) (synclet.SyncletClient, error) {
 	sm.mutex.Lock()
 	defer sm.mutex.Unlock()
+	defer func() {
+		logger.Get(ctx).Infof("synclet! %v", time.Now())
+		if err := sm.kCli.Measure(ctx, podID, ns, "hypothesizer"); err != nil {
+			logger.Get(ctx).Infof("Err: %v", err)
+		}
+		logger.Get(ctx).Infof("synclet? %v", time.Now())
+	}()
+
 	return sm.clientForPodInternal(ctx, podID, ns)
+
 }
 
 func (sm SyncletManager) clientForPodInternal(ctx context.Context, podID k8s.PodID, ns k8s.Namespace) (synclet.SyncletClient, error) {
+
 	client, ok := sm.clients[podID]
 	if ok {
 		return client, nil

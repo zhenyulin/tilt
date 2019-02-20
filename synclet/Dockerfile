@@ -1,6 +1,7 @@
 # iron/go:dev is the alpine image with the go tools added
 ARG baseImage="iron/go:dev"
 
+
 FROM ${baseImage} as builder
 
 WORKDIR /go/src/github.com/windmilleng/tilt
@@ -23,6 +24,8 @@ COPY --from=builder /root/.cache /root/.cache
 
 # Create a minimal image with just the binary.
 FROM alpine:latest
+
+RUN wget https://github.com/kubernetes-sigs/cri-tools/releases/download/v1.13.0/crictl-v1.13.0-linux-amd64.tar.gz && tar zxvf crictl-v1.13.0-linux-amd64.tar.gz -C /usr/local/bin
 
 WORKDIR /app
 COPY --from=builder /app/server .
