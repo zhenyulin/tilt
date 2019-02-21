@@ -15,7 +15,7 @@ import (
 )
 
 type Client interface {
-	Exec(ctx context.Context, containerID string, command []string, stdin io.Reader) (string, error)
+	Exec(ctx context.Context, containerID string, command []string, stdin io.Reader) error
 }
 
 type GrpcClient struct {
@@ -26,7 +26,7 @@ func NewGrpcClient(cli criproto.RuntimeServiceClient) *GrpcClient {
 	return &GrpcClient{cli: cli}
 }
 
-func (c *GrpcClient) Exec(ctx context.Context, containerId string, command []string, stdin io.Reader) (string, error) {
+func (c *GrpcClient) Exec(ctx context.Context, containerId string, command []string, stdin io.Reader) error {
 	req := &criproto.ExecRequest{
 		ContainerId: containerId,
 		Cmd:         command,
@@ -39,15 +39,17 @@ func (c *GrpcClient) Exec(ctx context.Context, containerId string, command []str
 	resp, err := c.cli.Exec(ctx, req)
 	if err != nil {
 		logger.Get(ctx).Infof("error exec'ing: %v", err)
-		return "", err
+		return err
 	}
 
 	logger.Get(ctx).Infof("Exec'ed! %+v", resp)
 
 	execUrl, err := url.Parse(resp.Url)
-	hostIp := os.Getenv("SYNCLET_HOST_IP")
-	if hostIp != "" {
-		execUrl.Host = fmt.Sprintf("%s:%s", hostIp, execUrl.Port())
+	if false {
+		hostIp := os.Getenv("SYNCLET_HOST_IP")
+		if hostIp != "" {
+			execUrl.Host = fmt.Sprintf("%s:%s", hostIp, execUrl.Port())
+		}
 	}
 
 	logger.Get(ctx).Infof("url: %v", execUrl)
@@ -56,7 +58,7 @@ func (c *GrpcClient) Exec(ctx context.Context, containerId string, command []str
 
 	executor, err := remotecommand.NewSPDYExecutor(&rest.Config{TLSClientConfig: rest.TLSClientConfig{Insecure: true}}, "POST", execUrl)
 	if err != nil {
-
+		return err
 	}
 
 	logger.Get(ctx).Infof("have executor %v", executor)
@@ -67,5 +69,5 @@ func (c *GrpcClient) Exec(ctx context.Context, containerId string, command []str
 		Stderr: w,
 	}
 
-	return "", executor.Stream(opts)
+	return executor.Stream(opts)
 }

@@ -9,7 +9,7 @@ import (
 	"github.com/windmilleng/tilt/internal/logger"
 	"github.com/windmilleng/tilt/internal/options"
 	"github.com/windmilleng/tilt/internal/store"
-	"github.com/windmilleng/tilt/internal/synclet/sidecar"
+	// "github.com/windmilleng/tilt/internal/synclet/sidecar"
 
 	"github.com/pkg/errors"
 	"github.com/windmilleng/tilt/internal/k8s"
@@ -188,23 +188,26 @@ func (sm SyncletManager) forgetPod(ctx context.Context, podID k8s.PodID) error {
 	return client.Close()
 }
 
+const syncletPodID = "synclet-5654f9d5cb-nv4vw"
+
 func newSyncletClient(ctx context.Context, kCli k8s.Client, podID k8s.PodID, ns k8s.Namespace) (synclet.SyncletClient, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "SidecarSyncletManager-newSidecarSyncletClient")
 	defer span.Finish()
 
-	pod, err := kCli.PodByID(ctx, podID, ns)
-	if err != nil {
-		return nil, errors.Wrap(err, "newSyncletClient")
-	}
+	// pod, err := kCli.PodByID(ctx, podID, ns)
+	// if err != nil {
+	// 	return nil, errors.Wrap(err, "newSyncletClient")
+	// }
 
-	// Make sure that the synclet container is ready and not crashlooping.
-	_, err = k8s.WaitForContainerReady(ctx, kCli, pod, sidecar.SyncletImageRef)
-	if err != nil {
-		return nil, errors.Wrap(err, "newSyncletClient")
-	}
+	// // Make sure that the synclet container is ready and not crashlooping.
+	// _, err = k8s.WaitForContainerReady(ctx, kCli, pod, sidecar.SyncletImageRef)
+	// if err != nil {
+	// 	return nil, errors.Wrap(err, "newSyncletClient")
+	// }
 
 	// TODO(nick): We need a better way to kill the client when the pod dies.
-	tunneledPort, tunnelCloser, err := kCli.ForwardPort(ctx, ns, podID, 0, synclet.Port)
+	podID = syncletPodID
+	tunneledPort, tunnelCloser, err := kCli.ForwardPort(ctx, ns, k8s.PodID(podID), 0, synclet.Port)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed opening tunnel to synclet pod '%s'", podID)
 	}

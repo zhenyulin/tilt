@@ -17,7 +17,7 @@ spec:
       hostNetwork: true
       containers:
       - name: synclet
-        image: gcr.io/windmill-public-containers/tilt-synclet:dirty-67da2940647ff41db745
+        image: gcr.io/windmill-public-containers/tilt-synclet:SYNCLET_DEV_TAG
         env:
         - name: SYNCLET_HOST_IP
           valueFrom:

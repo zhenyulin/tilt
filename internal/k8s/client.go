@@ -17,8 +17,9 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/browser"
 	"github.com/pkg/errors"
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/validation"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
@@ -73,6 +74,8 @@ type Client interface {
 	PollForPodsWithImage(ctx context.Context, image reference.NamedTagged, n Namespace, labels []model.LabelPair, timeout time.Duration) ([]v1.Pod, error)
 
 	PodByID(ctx context.Context, podID PodID, n Namespace) (*v1.Pod, error)
+
+	PodsList(ctx context.Context) (*v1.PodList, error)
 
 	// Creates a channel where all changes to the pod are brodcast.
 	// Takes a pod as input, to indicate the version of the pod where we start watching.

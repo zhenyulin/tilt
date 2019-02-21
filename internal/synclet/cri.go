@@ -44,10 +44,9 @@ func (s CriSynclet) rmFiles(ctx context.Context, containerId container.ID, files
 		return nil
 	}
 
-	// output, err := s.cri.Exec(ctx, string(containerId), append([]string{"rm"}, filesToDelete...), nil)
+	output, err := s.cri.Exec(ctx, string(containerId), append([]string{"rm"}, filesToDelete...), nil)
 
-	logger.Get(ctx).Infof("removing files %q", "not yet implemented")
-	return nil
+	return err
 }
 
 func (s CriSynclet) execCmds(ctx context.Context, containerId container.ID, cmds []model.Cmd) error {
@@ -60,11 +59,10 @@ func (s CriSynclet) execCmds(ctx context.Context, containerId container.ID, cmds
 		// TODO: instrument this
 		logger.Get(ctx).Infof("[CMD %d/%d] %s", i+1, len(cmds), strings.Join(c.Argv, " "))
 		// // TODO(matt) - plumb PipelineState through
-		// l := logger.Get(ctx)
-		// err := s.cri.ExecInContainer(ctx, string(containerId), c, l.Writer(logger.InfoLvl))
-		// if err != nil {
-		// 	return build.WrapContainerExecError(err, containerId, c)
-		// }
+		err := s.cri.Exec(ctx, string(containerId), c.Argv, nil)
+		if err != nil {
+			return build.WrapContainerExecError(err, containerId, c)
+		}
 	}
 	return nil
 }
