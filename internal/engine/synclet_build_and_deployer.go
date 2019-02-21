@@ -112,14 +112,12 @@ func (sbd *SyncletBuildAndDeployer) updateViaSynclet(ctx context.Context,
 
 	logger.Get(ctx).Infof("scli: %+v", sCli)
 
-	if false {
-		err = sCli.UpdateContainer(ctx, deployInfo.ContainerID, archive.Bytes(), containerPathsToRm, cmds, fbInfo.HotReload)
-		if err != nil {
-			if build.IsUserBuildFailure(err) {
-				return store.BuildResultSet{}, WrapDontFallBackError(err)
-			}
-			return store.BuildResultSet{}, err
+	err = sCli.UpdateContainer(ctx, deployInfo.ContainerID, archive.Bytes(), containerPathsToRm, cmds, fbInfo.HotReload)
+	if err != nil {
+		if build.IsUserBuildFailure(err) {
+			return store.BuildResultSet{}, WrapDontFallBackError(err)
 		}
+		return store.BuildResultSet{}, err
 	}
 
 	res := state.LastResult.ShallowCloneForContainerUpdate(state.FilesChangedSet)

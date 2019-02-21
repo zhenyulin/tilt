@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/opentracing/opentracing-go"
 
 	"github.com/windmilleng/tilt/internal/container"
 	"github.com/windmilleng/tilt/internal/k8s/cri"
+	"github.com/windmilleng/tilt/internal/logger"
 	"github.com/windmilleng/tilt/internal/model"
 )
 
@@ -32,7 +32,7 @@ func (s CriSynclet) writeFiles(ctx context.Context, containerId container.ID, ta
 
 	output, err := s.cri.Exec(ctx, string(containerId), []string{"tar", "-x", "-f", "/dev/stdin"}, bytes.NewBuffer(tarArchive))
 
-	log.Printf("writing files; output: %q", output)
+	logger.Get(ctx).Infof("writing files; output: %q", output)
 	return err
 }
 
@@ -44,21 +44,21 @@ func (s CriSynclet) rmFiles(ctx context.Context, containerId container.ID, files
 		return nil
 	}
 
-	output, err := s.cri.Exec(ctx, string(containerId), append([]string{"rm"}, filesToDelete...), nil)
+	// output, err := s.cri.Exec(ctx, string(containerId), append([]string{"rm"}, filesToDelete...), nil)
 
-	log.Printf("removing files %q", output)
-	return err
+	logger.Get(ctx).Infof("removing files %q", "not yet implemented")
+	return nil
 }
 
 func (s CriSynclet) execCmds(ctx context.Context, containerId container.ID, cmds []model.Cmd) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Synclet-execCommands")
 	defer span.Finish()
 
-	log.Printf("exec'ing %v commands", len(cmds))
+	logger.Get(ctx).Infof("exec'ing %v commands", len(cmds))
 
 	for i, c := range cmds {
 		// TODO: instrument this
-		log.Printf("[CMD %d/%d] %s", i+1, len(cmds), strings.Join(c.Argv, " "))
+		logger.Get(ctx).Infof("[CMD %d/%d] %s", i+1, len(cmds), strings.Join(c.Argv, " "))
 		// // TODO(matt) - plumb PipelineState through
 		// l := logger.Get(ctx)
 		// err := s.cri.ExecInContainer(ctx, string(containerId), c, l.Writer(logger.InfoLvl))

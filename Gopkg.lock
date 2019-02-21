@@ -1380,6 +1380,12 @@
   revision = "e3762e86a74c878ffed47484592986685639c2cd"
 
 [[projects]]
+  name = "k8s.io/kubernetes"
+  packages = ["pkg/kubelet/apis/cri/runtime/v1alpha2"]
+  revision = "721bfa751924da8d1680787490c54b9179b1fed0"
+  version = "v1.13.3"
+
+[[projects]]
   name = "sigs.k8s.io/yaml"
   packages = ["."]
   revision = "fd68e9863619f6ec2fdd8625fe1f02e7c877e480"
@@ -1388,6 +1394,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "fe13dcc82d5e92126a360afab97668139e21a0ce82f5ae3dffcdb1843c724db9"
+  inputs-digest = "c696a96ad35c1c5095b7305be2feb8130d1da573408355d0d857ff524f32c322"
   solver-name = "gps-cdcl"
   solver-version = 1

@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: synclet
+  labels:
+    app: synclet
+spec:
+  selector:
+    matchLabels:
+      app: synclet
+  template:
+    metadata:
+      labels:
+        app: synclet
+        tier: web
+    spec:
+      hostNetwork: true
+      containers:
+      - name: synclet
+        image: gcr.io/windmill-public-containers/tilt-synclet:dirty-67da2940647ff41db745
+        env:
+        - name: SYNCLET_HOST_IP
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.hostIP
+        args:
+          - --cri-endpoint
+          - /run/containerd/containerd.sock
+        securityContext:
+          privileged: true
+        ports:
+        - containerPort: 23551
+        resources:
+          requests:
+            cpu: "10m"
+        volumeMounts:
+        - mountPath: /run/containerd/containerd.sock
+          name: tilt-containerdsock
+      volumes:
+      - hostPath:
+          path: /run/containerd/containerd.sock
+          type: ""
+        name: tilt-containerdsock

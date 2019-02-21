@@ -7,10 +7,15 @@ package synclet
 
 import (
 	"context"
+	"fmt"
 	"github.com/windmilleng/tilt/internal/container"
 	"github.com/windmilleng/tilt/internal/docker"
 	"github.com/windmilleng/tilt/internal/k8s"
 	"github.com/windmilleng/tilt/internal/k8s/cri"
+	"google.golang.org/grpc"
+	"k8s.io/kubernetes/pkg/kubelet/apis/cri/runtime/v1alpha2"
+	"net"
+	"time"
 )
 
 // Injectors from wire.go:
@@ -24,8 +29,32 @@ func WireDockerSynclet(ctx context.Context, env k8s.Env, runtime container.Runti
 	return dockerSynclet, nil
 }
 
-func WireCriSynclet(ctx context.Context, criEndpoint cri.Endpoint) (*CriSynclet, error) {
-	cliClient := cri.NewCliClient(criEndpoint)
-	criSynclet := NewCriSynclet(cliClient)
+func WireCriSynclet(ctx context.Context, endpoint Endpoint) (*CriSynclet, error) {
+	runtimeServiceClient, err := provideRuntimeClient(ctx, endpoint)
+	if err != nil {
+		return nil, err
+	}
+	grpcClient := cri.NewGrpcClient(runtimeServiceClient)
+	criSynclet := NewCriSynclet(grpcClient)
 	return criSynclet, nil
+}
+
+// wire.go:
+
+type Endpoint string
+
+func provideRuntimeClient(ctx context.Context, endpoint Endpoint) (v1alpha2.RuntimeServiceClient, error) {
+
+	addr := string(endpoint)
+
+	conn, err := grpc.Dial(addr, grpc.WithInsecure(), grpc.WithBlock(), grpc.WithTimeout(2*time.Second), grpc.WithDialer(dial))
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to %v: %v", addr, err)
+	}
+
+	return v1alpha2.NewRuntimeServiceClient(conn), nil
+}
+
+func dial(addr string, timeout time.Duration) (net.Conn, error) {
+	return net.DialTimeout("unix", addr, timeout)
 }

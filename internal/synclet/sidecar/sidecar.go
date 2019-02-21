@@ -58,7 +58,7 @@ var RuntimeToConfig map[container.Runtime]ContainerAndVolume = map[container.Run
 		Container: v1.Container{
 			Name:            SyncletContainerName,
 			Image:           fmt.Sprintf("%s:%s", SyncletImageName, SyncletTag),
-			ImagePullPolicy: v1.PullIfNotPresent,
+			ImagePullPolicy: v1.PullAlways,
 			Resources:       v1.ResourceRequirements{Requests: v1.ResourceList{v1.ResourceCPU: resource.MustParse("0Mi")}},
 			VolumeMounts: []v1.VolumeMount{
 				v1.VolumeMount{
@@ -71,8 +71,17 @@ var RuntimeToConfig map[container.Runtime]ContainerAndVolume = map[container.Run
 				Privileged: syncletPrivileged(),
 			},
 			Args: []string{"--cri-endpoint", "/run/containerd/containerd.sock"},
+			Env: []v1.EnvVar{
+				v1.EnvVar{
+					Name: "SYNCLET_HOST_IP",
+					ValueFrom: &v1.EnvVarSource{
+						FieldRef: &v1.ObjectFieldSelector{
+							FieldPath: "status.hostIP",
+						},
+					},
+				},
+			},
 		},
-
 		Volume: v1.Volume{
 			Name: "tilt-containerdsock",
 			VolumeSource: v1.VolumeSource{

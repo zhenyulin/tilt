@@ -101,6 +101,11 @@ func (s DockerSynclet) UpdateContainer(
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Synclet-UpdateContainer")
 	defer span.Finish()
 
+	log.Printf("Can I see this?")
+
+	logger.Get(ctx).Infof("Hrm")
+	return nil
+
 	err := s.rmFiles(ctx, containerId, filesToDelete)
 	if err != nil {
 		return fmt.Errorf("error removing files while updating container %s: %v",

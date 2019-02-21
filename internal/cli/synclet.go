@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"time"
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/spf13/cobra"
@@ -13,7 +14,6 @@ import (
 
 	"github.com/windmilleng/tilt/internal/container"
 	"github.com/windmilleng/tilt/internal/k8s"
-	"github.com/windmilleng/tilt/internal/k8s/cri"
 	"github.com/windmilleng/tilt/internal/logger"
 	"github.com/windmilleng/tilt/internal/options"
 	"github.com/windmilleng/tilt/internal/synclet"
@@ -80,9 +80,11 @@ func (sc *SyncletCmd) run() {
 	if sc.criEndpoint == "" {
 		s, err = synclet.WireDockerSynclet(ctx, k8s.EnvUnknown, container.RuntimeDocker)
 	} else {
-		s, err = synclet.WireCriSynclet(ctx, cri.Endpoint(sc.criEndpoint))
+		s, err = synclet.WireCriSynclet(ctx, synclet.Endpoint(sc.criEndpoint))
 	}
 	if err != nil {
+		log.Printf("failed to wire synclet: %v", err)
+		time.Sleep(3600 * time.Second)
 		log.Fatalf("failed to wire synclet: %v", err)
 	}
 

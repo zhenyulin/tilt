@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/windmilleng/tilt/internal/logger"
@@ -150,11 +149,11 @@ func (sm SyncletManager) ClientForPod(ctx context.Context, podID k8s.PodID, ns k
 	sm.mutex.Lock()
 	defer sm.mutex.Unlock()
 	defer func() {
-		logger.Get(ctx).Infof("synclet! %v", time.Now())
-		if err := sm.kCli.Measure(ctx, podID, ns, "hypothesizer"); err != nil {
-			logger.Get(ctx).Infof("Err: %v", err)
-		}
-		logger.Get(ctx).Infof("synclet? %v", time.Now())
+		// logger.Get(ctx).Infof("synclet! %v", time.Now())
+		// if err := sm.kCli.Measure(ctx, podID, ns, "hypothesizer"); err != nil {
+		// 	logger.Get(ctx).Infof("Err: %v", err)
+		// }
+		// logger.Get(ctx).Infof("synclet? %v", time.Now())
 	}()
 
 	return sm.clientForPodInternal(ctx, podID, ns)
