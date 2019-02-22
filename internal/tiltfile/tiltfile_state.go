@@ -70,6 +70,9 @@ func (s *tiltfileState) exec() error {
 
 	s.logger.Printf("Beginning Tiltfile execution")
 	_, err := starlark.ExecFile(thread, s.filename.path, nil, s.builtins())
+	if err == nil {
+		s.logger.Printf("Successfully executed Tiltfile")
+	}
 	return err
 }
 
@@ -87,6 +90,7 @@ const (
 
 	// k8s functions
 	k8sYamlN     = "k8s_yaml"
+	filterYamlN  = "filter_yaml"
 	k8sResourceN = "k8s_resource"
 	portForwardN = "port_forward"
 
@@ -96,11 +100,11 @@ const (
 	readFileN     = "read_file"
 	kustomizeN    = "kustomize"
 	helmN         = "helm"
-	yamlN         = "yaml"
 	listdirN      = "listdir"
 
 	// other functions
 	failN = "fail"
+	blobN = "blob"
 )
 
 func (s *tiltfileState) builtins() starlark.StringDict {
@@ -123,13 +127,14 @@ func (s *tiltfileState) builtins() starlark.StringDict {
 	addBuiltin(r, dockerComposeN, s.dockerCompose)
 	addBuiltin(r, dcResourceN, s.dcResource)
 	addBuiltin(r, k8sYamlN, s.k8sYaml)
+	addBuiltin(r, filterYamlN, s.filterYaml)
 	addBuiltin(r, k8sResourceN, s.k8sResource)
 	addBuiltin(r, portForwardN, s.portForward)
 	addBuiltin(r, localGitRepoN, s.localGitRepo)
 	addBuiltin(r, kustomizeN, s.kustomize)
 	addBuiltin(r, helmN, s.helm)
 	addBuiltin(r, failN, s.fail)
-	addBuiltin(r, yamlN, s.yaml)
+	addBuiltin(r, blobN, s.blob)
 	addBuiltin(r, listdirN, s.listdir)
 
 	s.builtinsMap = r

@@ -12,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/windmilleng/tilt/internal/docker"
+	"github.com/windmilleng/tilt/internal/yaml"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 
@@ -296,7 +297,7 @@ func TestLocal(t *testing.T) {
 
 	f.file("Tiltfile", `
 docker_build('gcr.io/foo', 'foo')
-yaml = yaml(local('cat foo.yaml'))
+yaml = local('cat foo.yaml')
 k8s_resource('foo', yaml)
 `)
 
@@ -307,21 +308,6 @@ k8s_resource('foo', yaml)
 		deployment("foo"))
 }
 
-func TestBlobAsYamlErr(t *testing.T) {
-	f := newFixture(t)
-	defer f.TearDown()
-
-	f.setupFoo()
-
-	f.file("Tiltfile", `
-docker_build('gcr.io/foo', 'foo')
-yaml = local('cat foo.yaml')
-k8s_resource('foo', yaml)
-`)
-
-	f.loadErrString("no longer a valid YAML format")
-}
-
 func TestReadFile(t *testing.T) {
 	f := newFixture(t)
 	defer f.TearDown()
@@ -330,7 +316,7 @@ func TestReadFile(t *testing.T) {
 
 	f.file("Tiltfile", `
 docker_build('gcr.io/foo', 'foo')
-yaml = yaml(read_file('foo.yaml'))
+yaml = read_file('foo.yaml')
 k8s_resource('foo', yaml)
 `)
 
@@ -911,6 +897,21 @@ docker_build("gcr.io/foo", "foo", cache='/path/to/cache')
 	f.loadErrString("no such file or directory")
 }
 
+func TestFilterYaml(t *testing.T) {
+	f := newFixture(t)
+	defer f.TearDown()
+	f.file("k8s.yaml", yaml.ConcatYAML(testyaml.DoggosDeploymentYaml, testyaml.SnackYaml, testyaml.SanchoYAML))
+	f.file("Tiltfile", `labels = {'app': 'doggos'}
+doggos, rest = filter_yaml('k8s.yaml', labels=labels)
+k8s_resource('doggos', yaml=doggos)
+k8s_resource('rest', yaml=rest)
+`)
+	f.load()
+
+	f.assertNextManifest("doggos", deployment("doggos"))
+	f.assertNextManifest("rest", deployment("snack"), deployment("sancho"))
+}
+
 func TestTopLevelIfStatement(t *testing.T) {
 	f := newFixture(t)
 	defer f.TearDown()
@@ -1166,7 +1167,7 @@ func TestBlob(t *testing.T) {
 
 	f.file(
 		"Tiltfile",
-		fmt.Sprintf(`k8s_yaml(yaml('''%s'''))`, testyaml.SnackYaml),
+		fmt.Sprintf(`k8s_yaml(blob('''%s'''))`, testyaml.SnackYaml),
 	)
 
 	f.load()
@@ -1180,10 +1181,10 @@ func TestBlobErr(t *testing.T) {
 
 	f.file(
 		"Tiltfile",
-		`k8s_yaml(yaml(42))`,
+		`blob(42)`,
 	)
 
-	f.loadErrString("got int, want string or Blob")
+	f.loadErrString("for parameter 1: got int, want string")
 }
 
 func TestImageDependency(t *testing.T) {
@@ -1251,6 +1252,29 @@ k8s_yaml('foo.yaml')
 		"gcr.io/image-b",
 		"gcr.io/image-c",
 		"gcr.io/image-d",
+	}, f.imageTargetNames(m))
+}
+
+func TestImageDependencyNormalization(t *testing.T) {
+	f := newFixture(t)
+	defer f.TearDown()
+
+	f.gitInit("")
+	f.file("common.dockerfile", "FROM golang:1.10")
+	f.file("auth.dockerfile", "FROM vandelay/common")
+	f.yaml("auth.yaml", deployment("auth", image("vandelay/auth")))
+	f.file("Tiltfile", `
+docker_build('vandelay/common', '.', dockerfile='common.dockerfile')
+docker_build('vandelay/auth', '.', dockerfile='auth.dockerfile')
+k8s_yaml('auth.yaml')
+`)
+
+	f.load()
+
+	m := f.assertNextManifest("auth", deployment("auth"))
+	assert.Equal(t, []string{
+		"docker.io/vandelay/common",
+		"docker.io/vandelay/auth",
 	}, f.imageTargetNames(m))
 }
 
