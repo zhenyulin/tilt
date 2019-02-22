@@ -156,6 +156,10 @@ func (sbd *SyncletBuildAndDeployer) updateViaExec(ctx context.Context,
 	l := logger.Get(ctx)
 	w := l.Writer(logger.InfoLvl)
 
+	if !hotReload {
+		return fmt.Errorf("exec sync can't restart a container; set hot_reload on fast_build (important note: the container won't restart")
+	}
+
 	if len(filesToDelete) > 0 {
 		filesToShow := filesToDelete
 		if len(filesToShow) > 5 {
