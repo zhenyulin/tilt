@@ -7,7 +7,7 @@ import (
 	"os/exec"
 
 	"github.com/docker/distribution/reference"
-	"github.com/opencontainers/go-digest"
+	// "github.com/opencontainers/go-digest"
 
 	"github.com/windmilleng/tilt/internal/docker"
 	"github.com/windmilleng/tilt/internal/logger"
