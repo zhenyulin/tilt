@@ -60,27 +60,29 @@ func (b *ExecCustomBuilder) Build(ctx context.Context, ref reference.Named, comm
 		return nil, err
 	}
 
-	inspect, _, err := b.dCli.ImageInspectWithRaw(ctx, result.String())
-	if err != nil {
-		return nil, err
-	}
+	return result, nil
 
-	dig := digest.Digest(inspect.ID)
+	// inspect, _, err := b.dCli.ImageInspectWithRaw(ctx, result.String())
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	tag, err := digestAsTag(dig)
-	if err != nil {
-		return nil, err
-	}
+	// dig := digest.Digest(inspect.ID)
 
-	namedTagged, err := reference.WithTag(ref, tag)
-	if err != nil {
-		return nil, err
-	}
+	// tag, err := digestAsTag(dig)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	err = b.dCli.ImageTag(ctx, dig.String(), namedTagged.String())
-	if err != nil {
-		return nil, err
-	}
+	// namedTagged, err := reference.WithTag(ref, tag)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	return namedTagged, nil
+	// err = b.dCli.ImageTag(ctx, dig.String(), namedTagged.String())
+	// if err != nil {
+	// 	return nil, err
+	// }
+
+	// return namedTagged, nil
 }

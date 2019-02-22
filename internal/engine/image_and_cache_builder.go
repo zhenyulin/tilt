@@ -105,7 +105,7 @@ func (icb *imageAndCacheBuilder) Build(ctx context.Context, iTarget model.ImageT
 		return nil, fmt.Errorf("image %q has no valid buildDetails (neither StaticBuildInfo nor FastBuildInfo)", iTarget.Ref)
 	}
 
-	if !canSkipPush {
+	if !canSkipPush && false{
 		var err error
 		n, err = icb.ib.PushImage(ctx, n, ps.Writer(ctx))
 		if err != nil {
