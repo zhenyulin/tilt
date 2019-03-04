@@ -305,7 +305,6 @@ func ProvideClientSet(cfg *rest.Config) (*kubernetes.Clientset, error) {
 
 func ProvideClientConfig() clientcmd.ClientConfig {
 	rules := clientcmd.NewDefaultClientConfigLoadingRules()
-	rules.DefaultClientConfig = &clientcmd.DefaultClientConfig
 
 	overrides := &clientcmd.ConfigOverrides{}
 	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
