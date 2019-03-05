@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"os"
 	"os/exec"
 )
 
@@ -25,6 +26,7 @@ func (k realKubectlRunner) prependGlobalArgs(args []string) []string {
 func (k realKubectlRunner) exec(ctx context.Context, args []string) (stdout string, stderr string, err error) {
 	args = k.prependGlobalArgs(args)
 	c := exec.CommandContext(ctx, "kubectl", args...)
+	c.Env = append(os.Environ(), "TILT_KUBECTL=1")
 
 	stdoutBuf := &bytes.Buffer{}
 	stderrBuf := &bytes.Buffer{}
@@ -38,6 +40,7 @@ func (k realKubectlRunner) exec(ctx context.Context, args []string) (stdout stri
 func (k realKubectlRunner) execWithStdin(ctx context.Context, args []string, stdin io.Reader) (stdout string, stderr string, err error) {
 	args = k.prependGlobalArgs(args)
 	c := exec.CommandContext(ctx, "kubectl", args...)
+	c.Env = append(os.Environ(), "TILT_KUBECTL=1")
 	c.Stdin = stdin
 
 	stdoutBuf := &bytes.Buffer{}
