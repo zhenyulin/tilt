@@ -20,10 +20,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"log"
 	"math/rand"
 	"net"
 	"net/url"
 	"reflect"
+	goruntime "runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -175,8 +178,13 @@ func (r *Reflector) ListAndWatch(stopCh <-chan struct{}) error {
 	options := metav1.ListOptions{ResourceVersion: "0"}
 	r.metrics.numberOfLists.Inc()
 	start := r.clock.Now()
+	log.Printf("DEBUG FROM ListAndWatch")
 	list, err := r.listerWatcher.List(options)
 	if err != nil {
+		stack := make([]byte, 1000000)
+		bs := goruntime.Stack(stack, false)
+		stack = stack[0:bs]
+		err := ioutil.WriteFile("/tmp/failed_to_list.stack", stack, 0644)
 		return fmt.Errorf("%s: Failed to list %v: %v", r.name, r.expectedType, err)
 	}
 	r.metrics.listDuration.Observe(time.Since(start).Seconds())
@@ -225,8 +233,10 @@ func (r *Reflector) ListAndWatch(stopCh <-chan struct{}) error {
 
 	for {
 		// give the stopCh a chance to stop the loop, even in case of continue statements further down on errors
+		log.Printf("DEBUG ListAndWatch")
 		select {
 		case <-stopCh:
+			log.Printf("DEBUG ListAndWatch: stopCh")
 			return nil
 		default:
 		}
@@ -241,6 +251,7 @@ func (r *Reflector) ListAndWatch(stopCh <-chan struct{}) error {
 
 		r.metrics.numberOfWatches.Inc()
 		w, err := r.listerWatcher.Watch(options)
+		log.Printf("DEBUG from Watch watchErr: %v", err)
 		if err != nil {
 			switch err {
 			case io.EOF:
@@ -248,6 +259,10 @@ func (r *Reflector) ListAndWatch(stopCh <-chan struct{}) error {
 			case io.ErrUnexpectedEOF:
 				klog.V(1).Infof("%s: Watch for %v closed with unexpected EOF: %v", r.name, r.expectedType, err)
 			default:
+				stack := make([]byte, 1000000)
+				bs := goruntime.Stack(stack, false)
+				stack = stack[0:bs]
+				err := ioutil.WriteFile("/tmp/failed_to_watch.stack", stack, 0644)
 				utilruntime.HandleError(fmt.Errorf("%s: Failed to watch %v: %v", r.name, r.expectedType, err))
 			}
 			// If this is "connection refused" error, it means that most likely apiserver is not responsive.
@@ -266,10 +281,13 @@ func (r *Reflector) ListAndWatch(stopCh <-chan struct{}) error {
 		}
 
 		if err := r.watchHandler(w, &resourceVersion, resyncerrc, stopCh); err != nil {
+			log.Printf("DEBUG watchHandler err: %v", err)
 			if err != errorStopRequested {
 				klog.Warningf("%s: watch of %v ended with: %v", r.name, r.expectedType, err)
 			}
 			return nil
+		} else {
+			log.Printf("DEBUG watchHandler no err?")
 		}
 	}
 }

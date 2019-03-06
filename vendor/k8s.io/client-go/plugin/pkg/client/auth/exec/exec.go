@@ -23,16 +23,19 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"reflect"
+	goruntime "runtime"
 	"sync"
 	"time"
 
 	"golang.org/x/crypto/ssh/terminal"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
@@ -206,6 +209,7 @@ type roundTripper struct {
 func (r *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	// If a user has already set credentials, use that. This makes commands like
 	// "kubectl get --token (token) pods" work.
+	log.Printf("DEBUG RoundTrip %s", req.Header.Get("Authorization"))
 	if req.Header.Get("Authorization") != "" {
 		return r.base.RoundTrip(req)
 	}
@@ -252,6 +256,8 @@ func (a *Authenticator) cert() (*tls.Certificate, error) {
 func (a *Authenticator) getCreds() (*credentials, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+
+	log.Printf("DEBUG FROM getCreds, expires: %s", a.exp)
 	if a.cachedCreds != nil && !a.credsExpired() {
 		return a.cachedCreds, nil
 	}
@@ -259,6 +265,7 @@ func (a *Authenticator) getCreds() (*credentials, error) {
 	if err := a.refreshCredsLocked(nil); err != nil {
 		return nil, err
 	}
+	log.Printf("DEBUG FROM getCreds, new creds expires: %s", a.exp)
 	return a.cachedCreds, nil
 }
 
@@ -281,6 +288,14 @@ func (a *Authenticator) maybeRefreshCreds(creds *credentials, r *clientauthentic
 // refreshCredsLocked executes the plugin and reads the credentials from
 // stdout. It must be called while holding the Authenticator's mutex.
 func (a *Authenticator) refreshCredsLocked(r *clientauthentication.Response) error {
+	stack := make([]byte, 1000000)
+	bs := goruntime.Stack(stack, false)
+	stack = stack[0:bs]
+	// log.Printf("STACK TRACE FROM refreshCredsLocked: %s", stack)
+	err := ioutil.WriteFile("/tmp/go.stack", stack, 0644)
+	if err != nil {
+		// do nothing
+	}
 	cred := &clientauthentication.ExecCredential{
 		Spec: clientauthentication.ExecCredentialSpec{
 			Response:    r,
