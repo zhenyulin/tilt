@@ -236,6 +236,8 @@ func (e K8sEntity) FindImages(k8sImageJsonPathsByKind map[string][]string) ([]re
 		}
 	}
 
+	// TODO(dbentley): also look in env vars
+
 	return result, nil
 }
 

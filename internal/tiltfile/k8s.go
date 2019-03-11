@@ -2,7 +2,6 @@ package tiltfile
 
 import (
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -15,76 +14,84 @@ import (
 	"github.com/windmilleng/tilt/internal/model"
 )
 
-type referenceList []reference.Named
-
-func (l referenceList) Len() int           { return len(l) }
-func (l referenceList) Less(i, j int) bool { return l[i].String() < l[j].String() }
-func (l referenceList) Swap(i, j int)      { l[i], l[j] = l[j], l[i] }
-
 type k8sResource struct {
 	// The name of this group, for display in the UX.
 	name string
 
-	// All k8s resources to be deployed.
-	entities []k8s.K8sEntity
+	// Definitions. These define what entities get put in this resource
 
-	// Image refs that the user manually asked to be associated with this resource.
-	providedImageRefNames map[string]bool
+	// k8s_resource_define(yaml=foo)
+	defEntities []k8s.K8sEntity
 
-	// All image refs, including:
-	// 1) one that the user manually asked to be associated with this resources, and
-	// 2) images that were auto-inferred from the included k8s resources.
-	imageRefNames map[string]bool
+	// k8s_resource_define(img=foo)
+	defImageRef reference.Named
 
-	imageRefs referenceList
+	// // Image refs that the user manually asked to be associated with this resource.
+	// providedImageRefNames map[string]bool
+
+	// // All image refs, including:
+	// // 1) one that the user manually asked to be associated with this resources, and
+	// // 2) images that were auto-inferred from the included k8s resources.
+	// imageRefNames map[string]bool
+
+	// imageRefs referenceList
+
+	// Options. These define how the engine and UI should treat this resource.
 
 	portForwards []portForward
 
 	// labels for pods that we should watch and associate with this resource
 	extraPodSelectors []labels.Selector
 
+	// Assembly. These fields are set as we are assembling.
+
+	// k8s resources to be deployed
+	entities []k8s.K8sEntity
+
 	dependencyIDs []model.TargetID
 }
 
-func (r *k8sResource) addProvidedImageRef(ref reference.Named) {
-	r.providedImageRefNames[ref.Name()] = true
-	if !r.imageRefNames[ref.Name()] {
-		r.imageRefNames[ref.Name()] = true
-		r.imageRefs = append(r.imageRefs, ref)
-		sort.Sort(r.imageRefs)
-	}
-}
+// func (r *k8sResource) addProvidedImageRef(ref reference.Named) {
+// 	r.providedImageRefNames[ref.Name()] = true
+// 	if !r.imageRefNames[ref.Name()] {
+// 		r.imageRefNames[ref.Name()] = true
+// 		r.imageRefs = append(r.imageRefs, ref)
+// 		sort.Sort(r.imageRefs)
+// 	}
+// }
 
-func (r *k8sResource) addEntities(entities []k8s.K8sEntity, k8sImageJsonPathsByKind map[string][]string) error {
-	r.entities = append(r.entities, entities...)
+// func (r *k8sResource) addEntities(entities []k8s.K8sEntity, k8sImageJsonPathsByKind map[string][]string) error {
+// 	r.entities = append(r.entities, entities...)
 
-	for _, entity := range entities {
-		images, err := entity.FindImages(k8sImageJsonPathsByKind)
-		if err != nil {
-			return err
-		}
-		for _, image := range images {
-			if !r.imageRefNames[image.Name()] {
-				r.imageRefNames[image.Name()] = true
-				r.imageRefs = append(r.imageRefs, image)
-			}
-		}
-	}
+// 	for _, entity := range entities {
+// 		images, err := entity.FindImages(k8sImageJsonPathsByKind)
+// 		if err != nil {
+// 			return err
+// 		}
+// 		for _, image := range images {
+// 			if !r.imageRefNames[image.Name()] {
+// 				r.imageRefNames[image.Name()] = true
+// 				r.imageRefs = append(r.imageRefs, image)
+// 			}
+// 		}
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
 
-// Return the provided image refs in a deterministic order.
-func (r k8sResource) providedImageRefNameList() []string {
-	result := make([]string, 0, len(r.providedImageRefNames))
-	for ref := range r.providedImageRefNames {
-		result = append(result, ref)
-	}
-	sort.Strings(result)
-	return result
-}
+// // Return the provided image refs in a deterministic order.
+// func (r k8sResource) providedImageRefNameList() []string {
+// 	result := make([]string, 0, len(r.providedImageRefNames))
+// 	for ref := range r.providedImageRefNames {
+// 		result = append(result, ref)
+// 	}
+// 	sort.Strings(result)
+// 	return result
+// }
 
 func (s *tiltfileState) k8sYaml(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	s.enter("k8s_yaml")
+	defer s.exit()
 	var yamlValue starlark.Value
 	if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 		"yaml", &yamlValue,
@@ -96,9 +103,19 @@ func (s *tiltfileState) k8sYaml(thread *starlark.Thread, fn *starlark.Builtin, a
 	if err != nil {
 		return nil, err
 	}
+	s.infof(yamlDesc(entities))
 	s.k8sUnresourced = append(s.k8sUnresourced, entities...)
 
 	return starlark.None, nil
+}
+
+// yamlDesc creates a short representation of a list of yaml entities, suitable for logging
+func yamlDesc(entities []k8s.K8sEntity) string {
+	if len(entities) == 0 {
+		return "0 Objects"
+	}
+
+	return fmt.Sprintf("%d Objects; first is %s", len(entities), entities[0].Name())
 }
 
 func (s *tiltfileState) filterYaml(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -192,6 +209,52 @@ func (s *tiltfileState) filterYaml(thread *starlark.Thread, fn *starlark.Builtin
 	}, nil
 }
 
+// func (s *tiltfileState) filterYamlInternal() (matching []k8s.K8sEntity, rest []k8s.K8sEntity, err error) {
+// 	var ps []k8s.Predicate
+// 	if labelsValue != nil {
+// 		d, ok := labelsValue.(*starlark.Dict)
+// 		if !ok {
+// 			return nil, fmt.Errorf("kwarg `labels`: expected dict, got %T", labelsValue)
+// 		}
+
+// 		metaLabels, err = skylarkStringDictToGoMap(d)
+// 		if err != nil {
+// 			return nil, fmt.Errorf("kwarg `labels`: %v", err)
+// 		}
+// 		ps = append(ps, k8s.MetadataLabelsPredicate(metaLabels))
+// 	}
+
+// 	if name != "" {
+// 		ps = append(ps, k8s.NamePredicate(name))
+// 	}
+
+// 	if namespace != "" {
+// 		ps = append(ps, k8s.NamespacePredicate(namespace))
+// 	}
+
+// 	if kind != "" {
+// 		ps = append(ps, k8s.KindPredicate(kind))
+// 	}
+
+// 	if !imageRef.Empty() {
+// 		ps = append(ps, k8s.ImagePredicate(imageRef))
+// 	}
+
+// 	return k8s.Filter(entities, k8s.All(ps))
+// }
+
+// func (s *tiltfileState) selectYaml(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+// 	err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+// 		"labels?", &labelsValue,
+// 		"name?", &name,
+// 		"namespace?", &namespace,
+// 		"kind?", &kind,
+// 		"image?", &image,
+// 	)
+
+// 	s.filterYamlInternal(fn)
+// }
+
 func (s *tiltfileState) k8sResource(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var name string
 	var yamlValue starlark.Value
@@ -239,17 +302,14 @@ func (s *tiltfileState) k8sResource(thread *starlark.Thread, fn *starlark.Builti
 		return nil, err
 	}
 
-	err = r.addEntities(entities, s.k8sImageJsonPathsByKind)
-	if err != nil {
-		return nil, err
-	}
+	r.defEntities = entities
 
 	if imageRefAsStr != "" {
 		imageRef, err := reference.ParseNormalizedNamed(imageRefAsStr)
 		if err != nil {
 			return nil, err
 		}
-		r.addProvidedImageRef(imageRef)
+		r.defImageRef = imageRef
 	}
 	r.portForwards = portForwards
 
@@ -359,9 +419,7 @@ func (s *tiltfileState) makeK8sResource(name string) (*k8sResource, error) {
 		return nil, fmt.Errorf("k8s_resource named %q already exists", name)
 	}
 	r := &k8sResource{
-		name:                  name,
-		providedImageRefNames: make(map[string]bool),
-		imageRefNames:         make(map[string]bool),
+		name: name,
 	}
 	s.k8s = append(s.k8s, r)
 	s.k8sByName[name] = r

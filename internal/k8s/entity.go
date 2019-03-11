@@ -6,13 +6,13 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/pkg/errors"
-	"github.com/windmilleng/tilt/internal/container"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	"github.com/windmilleng/tilt/internal/container"
 )
 
 type K8sEntity struct {
@@ -177,7 +177,7 @@ func ToLoadBalancerSpec(entity K8sEntity) (LoadBalancerSpec, bool) {
 }
 
 // Filter returns two slices of entities: those passing the given test, and the remainder of the input.
-func Filter(entities []K8sEntity, test func(e K8sEntity) (bool, error)) (passing, rest []K8sEntity, err error) {
+func Filter(entities []K8sEntity, test Predicate) (passing, rest []K8sEntity, err error) {
 	for _, e := range entities {
 		pass, err := test(e)
 		if err != nil {
@@ -192,61 +192,144 @@ func Filter(entities []K8sEntity, test func(e K8sEntity) (bool, error)) (passing
 	return passing, rest, nil
 }
 
-func FilterByImage(entities []K8sEntity, img container.RefSelector, k8sImageJsonPathsByKind map[string][]string) (passing, rest []K8sEntity, err error) {
-	return Filter(entities, func(e K8sEntity) (bool, error) { return e.HasImage(img, k8sImageJsonPathsByKind) })
+type Predicate func(K8sEntity) (bool, error)
+
+func All(predicates []Predicate) Predicate {
+	return func(e K8sEntity) (bool, error) {
+		for _, p := range predicates {
+			pass, err := p(e)
+			if err != nil {
+				return false, err
+			}
+			if !pass {
+				return false, nil
+			}
+		}
+		return true, nil
+	}
 }
 
-func FilterBySelectorMatchesLabels(entities []K8sEntity, labels map[string]string) (passing, rest []K8sEntity, err error) {
-	return Filter(entities, func(e K8sEntity) (bool, error) { return e.SelectorMatchesLabels(labels), nil })
+func Any(predicates []Predicate) Predicate {
+	return func(e K8sEntity) (bool, error) {
+		for _, p := range predicates {
+			pass, err := p(e)
+			if err != nil {
+				return false, err
+			}
+			if pass {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
 }
 
-func FilterByMetadataLabels(entities []K8sEntity, labels map[string]string) (passing, rest []K8sEntity, err error) {
-	return Filter(entities, func(e K8sEntity) (bool, error) { return e.MatchesMetadataLabels(labels) })
+func ImagePredicate(img container.RefSelector, k8sImageJsonPathsByKind map[string][]string) Predicate {
+	return func(e K8sEntity) (bool, error) {
+		return e.HasImage(img, k8sImageJsonPathsByKind)
+	}
 }
 
-func FilterByName(entities []K8sEntity, name string) (passing, rest []K8sEntity, err error) {
-	return Filter(entities, func(e K8sEntity) (bool, error) { return e.HasName(name), nil })
+func SelectorMatchesLabelsPredicate(labels map[string]string) Predicate {
+	return func(e K8sEntity) (bool, error) {
+		return e.SelectorMatchesLabels(labels), nil
+	}
 }
 
-func FilterByNamespace(entities []K8sEntity, ns string) (passing, rest []K8sEntity, err error) {
-	return Filter(entities, func(e K8sEntity) (bool, error) { return e.HasNamespace(ns), nil })
+func MatchesMetadataLabelsPredicate(labels map[string]string) Predicate {
+	return func(e K8sEntity) (bool, error) {
+		return e.MatchesMetadataLabels(labels)
+	}
 }
 
-func FilterByKind(entities []K8sEntity, kind string) (passing, rest []K8sEntity, err error) {
-	return Filter(entities, func(e K8sEntity) (bool, error) { return e.HasKind(kind), nil })
+func NamePredicate(name string) Predicate {
+	return func(e K8sEntity) (bool, error) {
+		return e.HasName(name), nil
+	}
 }
 
-func FilterByHasPodTemplateSpec(entities []K8sEntity) (passing, rest []K8sEntity, err error) {
-	return Filter(entities, func(e K8sEntity) (bool, error) {
+func NamespacePredicate(ns string) Predicate {
+	return func(e K8sEntity) (bool, error) {
+		return e.HasNamespace(ns), nil
+	}
+}
+
+func KindPredicate(kind string) Predicate {
+	return func(e K8sEntity) (bool, error) {
+		return e.HasKind(kind), nil
+	}
+}
+
+func HasPodTemplateSpecPredicate() Predicate {
+	return func(e K8sEntity) (bool, error) {
 		templateSpecs, err := ExtractPodTemplateSpec(&e)
 		if err != nil {
 			return false, err
 		}
 		return len(templateSpecs) > 0, nil
-	})
+	}
+}
+
+func AnyImagePredicate(k8sImageJsonPathsByKind map[string][]string) Predicate {
+	return func(e K8sEntity) (bool, error) {
+		images, err := e.FindImages(k8sImageJsonPathsByKind)
+		if err != nil {
+			return false, err
+		}
+		return len(images) > 0, nil
+	}
+}
+
+func ConstantPredicate(r bool, err error) Predicate {
+	return func(e K8sEntity) (bool, error) {
+		return r, err
+	}
+}
+
+// MatchesPodTemplateSpecPredicate returns a Predicate that matches entities whose labels match any of the PodTemplates.
+// This is useful to find Services that will route to a Pod.
+func MatchesPodTemplateSpecPredicate(withPodSpec K8sEntity) Predicate {
+	podTemplates, err := ExtractPodTemplateSpec(withPodSpec)
+	if err != nil {
+		return ConstantPredicate(false, err)
+	}
+	var ps []Predicate
+	for _, template := range podTemplates {
+		ps = append(ps, SelectorMatchesLabelsPredicate(template.Labels))
+	}
+	return Any(ps)
+}
+
+func FilterByImage(entities []K8sEntity, img container.RefSelector, k8sImageJsonPathsByKind map[string][]string) (passing, rest []K8sEntity, err error) {
+	return Filter(entities, ImagePredicate(img, k8sImageJsonPathsByKind))
+}
+
+func FilterBySelectorMatchesLabels(entities []K8sEntity, labels map[string]string) (passing, rest []K8sEntity, err error) {
+	return Filter(entities, SelectorMatchesLabelsPredicate(labels))
+}
+
+func FilterByMetadataLabels(entities []K8sEntity, labels map[string]string) (passing, rest []K8sEntity, err error) {
+	return Filter(entities, MatchesMetadataLabelsPredicate(labels))
+}
+
+func FilterByName(entities []K8sEntity, name string) (passing, rest []K8sEntity, err error) {
+	return Filter(entities, NamePredicate(name))
+}
+
+func FilterByNamespace(entities []K8sEntity, ns string) (passing, rest []K8sEntity, err error) {
+	return Filter(entities, NamespacePredicate(ns))
+}
+
+func FilterByKind(entities []K8sEntity, kind string) (passing, rest []K8sEntity, err error) {
+	return Filter(entities, KindPredicate(kind))
+}
+
+func FilterByHasPodTemplateSpec(entities []K8sEntity) (passing, rest []K8sEntity, err error) {
+	return Filter(entities, HasPodTemplateSpecPredicate())
 }
 
 func FilterByMatchesPodTemplateSpec(withPodSpec K8sEntity, entities []K8sEntity) (passing, rest []K8sEntity, err error) {
-	podTemplates, err := ExtractPodTemplateSpec(withPodSpec)
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "extracting pod template spec")
-	}
-
-	if len(podTemplates) == 0 {
-		return nil, entities, nil
-	}
-
-	var allMatches []K8sEntity
-	remaining := append([]K8sEntity{}, entities...)
-	for _, template := range podTemplates {
-		match, rest, err := FilterBySelectorMatchesLabels(remaining, template.Labels)
-		if err != nil {
-			return nil, nil, errors.Wrap(err, "filtering entities by label")
-		}
-		allMatches = append(allMatches, match...)
-		remaining = rest
-	}
-	return allMatches, remaining, nil
+	return Filter(entities, MatchesPodTemplateSpecPredicate(withPodSpec))
 }
 
 func (e K8sEntity) ResourceName() string {
