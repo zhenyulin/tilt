@@ -29,7 +29,7 @@ type tiltfileState struct {
 	filename localPath
 	dcCli    dockercompose.DockerComposeClient
 
-	// added to during execution
+	// modified during run
 	configFiles             []string
 	buildIndex              *buildIndex
 	k8s                     []*k8sResource
@@ -38,6 +38,7 @@ type tiltfileState struct {
 	dc                      dcResourceSet // currently only support one d-c.yml
 	k8sImageJsonPathsByKind map[string][]string
 	k8sGroupByImage         bool
+	indent                  int
 
 	// count how many times each builtin is called, for analytics
 	builtinCallCounts map[string]int
@@ -146,8 +147,7 @@ func (s *tiltfileState) builtins() starlark.StringDict {
 }
 
 func (s *tiltfileState) assemble() (resourceSet, []k8s.K8sEntity, error) {
-	s.enter("Assembly")
-	defer s.exit()
+	s.infof("Execution done; beginning assembly")
 	err := s.assembleImages()
 	if err != nil {
 		return resourceSet{}, nil, err
@@ -192,7 +192,7 @@ func (s *tiltfileState) assembleImages() error {
 }
 
 func (s *tiltfileState) assembleImage(imageBuilder *dockerImage) error {
-	s.enter(fmt.Sprintf("assemble image %v", imageBuilder.ref))
+	s.enter(fmt.Sprintf("%v", imageBuilder.ref))
 	defer s.exit()
 	var depImages []reference.Named
 	var err error
@@ -239,6 +239,7 @@ func (s *tiltfileState) assembleK8s() error {
 	if err != nil {
 		return err
 	}
+	s.infof("splitting k8s objects into workload vs. non-workload objects")
 	s.infof("workload k8s objects: %v", yamlDesc(workloads))
 	s.infof("non-workload k8s objects: %v", yamlDesc(others))
 	s.k8sUnresourced = others
@@ -259,7 +260,7 @@ func (s *tiltfileState) assembleK8s() error {
 }
 
 func (s *tiltfileState) assembleWorkload(e k8s.K8sEntity) error {
-	s.enter(fmt.Sprintf("assemble resource for %s", e.ResourceName()))
+	s.enter(fmt.Sprintf("assemble workload %s", e.ResourceName()))
 	defer s.exit()
 
 	r, err := s.findDestinationResource(e)
@@ -278,7 +279,7 @@ func (s *tiltfileState) assembleWorkload(e k8s.K8sEntity) error {
 		return nil
 	}
 
-	s.infof("adding related k8s objects: %s", yamlDesc(match))
+	s.infof("found related k8s objects: %s", yamlDesc(match))
 	r.entities = append(r.entities, match...)
 	s.k8sUnresourced = rest
 	return nil
@@ -327,11 +328,11 @@ func (s *tiltfileState) findDestinationResource(e k8s.K8sEntity) (*k8sResource, 
 	// TODO(dbentley): use the full object meta, to differentiate job and deployment with same name
 	name := e.Name()
 	if r, ok := s.k8sByName[name]; ok {
-		s.infof("matches resource %q: name of k8s workload %q", name, e.ResourceName())
+		s.infof("matches resource %q: name of k8s workload %q", name, e.Name())
 		return r, nil
 	}
 
-	s.infof("create resource %q: name of k8s workload %q", name, e.ResourceName())
+	s.infof("create resource %q: name of k8s workload %q", name, e.Name())
 	return s.makeK8sResource(name)
 }
 
@@ -712,13 +713,14 @@ const (
 )
 
 func (s *tiltfileState) enter(name string) {
-	s.logger.Printf("Enter: %v", name)
+	s.logger.Printf(strings.Repeat("  ", s.indent) + name)
+	s.indent++
 }
 
 func (s *tiltfileState) exit() {
-	s.logger.Printf("Exit")
+	s.indent--
 }
 
 func (s *tiltfileState) infof(fmt string, args ...interface{}) {
-	s.logger.Printf(fmt, args...)
+	s.logger.Printf(strings.Repeat("  ", s.indent)+fmt, args...)
 }

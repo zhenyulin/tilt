@@ -112,6 +112,7 @@ func (tfl tiltfileLoader) Load(ctx context.Context, filename string, matching ma
 
 	yamlManifest := model.Manifest{}
 	if len(unresourced) > 0 {
+		// TODO(dbentley): also mention all of these resources
 		yamlManifest, err = k8s.NewK8sOnlyManifest(unresourcedName, unresourced)
 		if err != nil {
 			return nil, model.Manifest{}, nil, s.warnings, err
