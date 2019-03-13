@@ -148,3 +148,26 @@ ADD . .
 `, string(newDf))
 	}
 }
+
+// func TestInjectRegistry(t *testing.T) {
+// 	df := Dockerfile(`
+// FROM gcr.io/windmill/foo:deadbeef
+// ADD . .`)
+
+// 	rep := model.RegistryReplacement{
+// 		Old: "gcr.io",
+// 		New: "myregistry.com",
+// 	}
+
+// 	newDF, modified, err := InjectImageDigest(df, )
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+
+// 	assert.True(t, modified)
+
+// 	expectedDF := Dockerfile(`FROM myregistry.com/windmill/foo:deadbeef
+// ADD . .`)
+
+// 	assert.Equal(t, expectedDF, newDF)
+// }

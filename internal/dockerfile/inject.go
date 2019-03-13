@@ -23,3 +23,35 @@ func InjectImageDigest(df Dockerfile, selector container.RefSelector, ref refere
 	newDf, err := ast.Print()
 	return newDf, true, err
 }
+
+// func InjectImageRegistry(df Dockerfile, rep model.RegistryReplacement) (Dockerfile, bool, error) {
+// 	ast, err := ParseAST(df)
+// 	if err != nil {
+// 		return "", false, err
+// 	}
+
+// 	modified := false
+
+// 	err = ast.traverseImageRefs(func(node *parser.Node, toReplace reference.Named) reference.Named {
+// 		if reference.Domain(toReplace) == rep.Old {
+// 			rest := reference.Path(toReplace)
+// 			cleanRef := reference.TrimNamed(toReplace)
+
+// 			new, err := reference.ParseNamed(fmt.Sprintf("%s/%s", rep.New, rest))
+// 			if err != nil {
+// 				fmt.Printf("%v\n", err)
+// 				return nil
+// 			}
+// 			modified = true
+// 			return new
+// 		}
+// 		return nil
+// 	})
+
+// 	df, err := ast.Print()
+// 	if err != nil {
+// 		return
+// 	}
+
+// 	return ast.Print(), modified, err
+// }
