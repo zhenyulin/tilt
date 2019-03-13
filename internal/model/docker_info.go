@@ -18,10 +18,11 @@ type ImageTarget struct {
 	// TODO(nick): It might eventually make sense to represent
 	// Tiltfile as a separate nodes in the build graph, rather
 	// than duplicating it in each ImageTarget.
-	tiltFilename  string
-	dockerignores []Dockerignore
-	repos         []LocalGitRepo
-	dependencyIDs []TargetID
+	tiltFilename         string
+	dockerignores        []Dockerignore
+	repos                []LocalGitRepo
+	dependencyIDs        []TargetID
+	RegistryReplacements []RegistryReplacement
 }
 
 func ImageID(ref container.RefSelector) TargetID {

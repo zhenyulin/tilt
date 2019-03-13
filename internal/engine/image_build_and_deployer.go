@@ -269,7 +269,15 @@ func injectImageDependencies(iTarget model.ImageTarget, iTargetMap map[model.Tar
 	}
 
 	for _, dep := range deps {
-		modified, err := ast.InjectImageDigest(iTargetMap[dep.TargetID].Ref, dep.Image)
+		img := dep.Image
+		for _, rep := range iTarget.RegistryReplacements {
+			newImg, err := model.ReplaceTaggedRefDomain(rep, img)
+			if err != nil {
+				return model.ImageTarget{}, fmt.Errorf("Unable to replace domain %s with %s in %s: %v", rep.Old, rep.New, img.String(), err)
+			}
+			img = newImg
+		}
+		modified, err := ast.InjectImageDigest(iTargetMap[dep.TargetID].Ref, img)
 		if err != nil {
 			return model.ImageTarget{}, errors.Wrap(err, "injectImageDependencies")
 		} else if !modified {

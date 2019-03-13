@@ -12,7 +12,7 @@ type RegistryReplacement struct {
 }
 
 // Replace takes performs a RegistryReplacement and a NamedTagged and returns a new NamedTag with the domain swapped out
-func Replace(rep RegistryReplacement, name reference.NamedTagged) (reference.NamedTagged, error) {
+func ReplaceTaggedRefDomain(rep RegistryReplacement, name reference.NamedTagged) (reference.NamedTagged, error) {
 	if reference.Domain(name) == rep.Old {
 		path := reference.Path(name)
 

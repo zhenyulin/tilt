@@ -18,11 +18,11 @@ var testCases = []struct {
 	{RegistryReplacement{"other.com", "myreg.com"}, "gcr.io/foo/bar:deadbeef", "gcr.io/foo/bar:deadbeef"},
 }
 
-func TestReplace(t *testing.T) {
+func TestReplaceTaggedRefDomain(t *testing.T) {
 	for i, tc := range testCases {
 		t.Run(fmt.Sprintf("Test Case #%d", i), func(t *testing.T) {
 			name := container.MustParseNamedTagged(tc.name)
-			actual, err := Replace(tc.rep, name)
+			actual, err := ReplaceTaggedRefDomain(tc.rep, name)
 			assert.NoError(t, err)
 			assert.Equal(t, tc.expected, actual.String())
 		})
