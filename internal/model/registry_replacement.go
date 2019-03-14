@@ -14,6 +14,20 @@ type RegistryReplacement struct {
 // Replace takes performs a RegistryReplacement and a NamedTagged and returns a new NamedTag with Old swapped for New
 // It errors if this isn't a valid NamedTagged
 func ReplaceNamedTagged(rep RegistryReplacement, name reference.NamedTagged) (reference.NamedTagged, error) {
+	newN, err := ReplaceNamed(rep, name)
+	if err != nil {
+		return nil, err
+	}
+
+	newNT, err := reference.WithTag(newN, name.Tag())
+	if err != nil {
+		return nil, err
+	}
+
+	return newNT, nil
+}
+
+func ReplaceNamed(rep RegistryReplacement, name reference.Named) (reference.Named, error) {
 	ns := name.String()
 
 	if !strings.Contains(ns, rep.Old) {
@@ -25,10 +39,6 @@ func ReplaceNamedTagged(rep RegistryReplacement, name reference.NamedTagged) (re
 	if err != nil {
 		return nil, err
 	}
-	newNT, err := reference.WithTag(newN, name.Tag())
-	if err != nil {
-		return nil, err
-	}
 
-	return newNT, nil
+	return newN, nil
 }

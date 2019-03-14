@@ -34,6 +34,14 @@ func (icb *imageAndCacheBuilder) Build(ctx context.Context, iTarget model.ImageT
 	var n reference.NamedTagged
 
 	ref := iTarget.Ref
+	namedRef := ref.AsNamedOnly()
+	for _, rep := range iTarget.RegistryReplacements {
+		newRef, err := model.ReplaceNamed(rep, namedRef)
+		if err != nil {
+			return nil, fmt.Errorf("Unable to replace domain %s with %s in %s: %v", rep.Old, rep.New, namedRef.String(), err)
+		}
+		namedRef = newRef
+	}
 	cacheInputs := icb.createCacheInputs(iTarget)
 	cacheRef, err := icb.cb.FetchCache(ctx, cacheInputs)
 	if err != nil {
@@ -46,7 +54,7 @@ func (icb *imageAndCacheBuilder) Build(ctx context.Context, iTarget model.ImageT
 		defer ps.EndPipelineStep(ctx)
 
 		df := icb.staticDockerfile(iTarget, cacheRef)
-		ref, err := icb.ib.BuildDockerfile(ctx, ps, ref.AsNamedOnly(), df, bd.BuildPath, ignore.CreateBuildContextFilter(iTarget), bd.BuildArgs)
+		ref, err := icb.ib.BuildDockerfile(ctx, ps, namedRef, df, bd.BuildPath, ignore.CreateBuildContextFilter(iTarget), bd.BuildArgs)
 
 		if err != nil {
 			return nil, err
@@ -62,7 +70,7 @@ func (icb *imageAndCacheBuilder) Build(ctx context.Context, iTarget model.ImageT
 
 			df := icb.baseDockerfile(bd, cacheRef, iTarget.CachePaths())
 			steps := bd.Steps
-			ref, err := icb.ib.BuildImageFromScratch(ctx, ps, ref.AsNamedOnly(), df, bd.Mounts, ignore.CreateBuildContextFilter(iTarget), steps, bd.Entrypoint)
+			ref, err := icb.ib.BuildImageFromScratch(ctx, ps, namedRef, df, bd.Mounts, ignore.CreateBuildContextFilter(iTarget), steps, bd.Entrypoint)
 
 			if err != nil {
 				return nil, err
@@ -95,7 +103,7 @@ func (icb *imageAndCacheBuilder) Build(ctx context.Context, iTarget model.ImageT
 	case model.CustomBuild:
 		ps.StartPipelineStep(ctx, "Building Dockerfile: [%s]", ref)
 		defer ps.EndPipelineStep(ctx)
-		ref, err := icb.custb.Build(ctx, ref.AsNamedOnly(), bd.Command)
+		ref, err := icb.custb.Build(ctx, namedRef, bd.Command)
 		if err != nil {
 			return nil, err
 		}
@@ -106,15 +114,20 @@ func (icb *imageAndCacheBuilder) Build(ctx context.Context, iTarget model.ImageT
 		return nil, fmt.Errorf("image %q has no valid buildDetails (neither StaticBuildInfo nor FastBuildInfo)", iTarget.Ref)
 	}
 
+	logger.Get(ctx).Infof("HELLO got ref: %v", n)
+	logger.Get(ctx).Infof("HELLO canSkipPush for %v: %v", iTarget.ID(), canSkipPush)
 	if !canSkipPush {
 		var err error
+		// TODO is this needed?
 		for _, rep := range iTarget.RegistryReplacements {
 			newImg, err := model.ReplaceNamedTagged(rep, n)
 			if err != nil {
 				return nil, fmt.Errorf("Unable to replace domain %s with %s in %s: %v", rep.Old, rep.New, n.String(), err)
 			}
+			logger.Get(ctx).Infof("HELLO did a replacement")
 			n = newImg
 		}
+		logger.Get(ctx).Infof("HELLO ref after replacements: %v", n)
 		n, err = icb.ib.PushImage(ctx, n, ps.Writer(ctx))
 		if err != nil {
 			return nil, err
