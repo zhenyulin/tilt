@@ -281,7 +281,7 @@ func injectImageDependencies(iTarget model.ImageTarget, iTargetMap map[model.Tar
 		if err != nil {
 			return model.ImageTarget{}, errors.Wrap(err, "injectImageDependencies")
 		} else if !modified {
-			return model.ImageTarget{}, fmt.Errorf("Could not inject image %q into Dockerfile of image %q", dep.Image, iTarget.Ref)
+			return model.ImageTarget{}, fmt.Errorf("Could not inject image %q into Dockerfile of image %q", img, iTarget.Ref)
 		}
 	}
 
