@@ -1,7 +1,7 @@
 package model
 
 import (
-	"fmt"
+	"strings"
 
 	"github.com/docker/distribution/reference"
 )
@@ -11,22 +11,24 @@ type RegistryReplacement struct {
 	New string
 }
 
-// Replace takes performs a RegistryReplacement and a NamedTagged and returns a new NamedTag with the domain swapped out
-func ReplaceTaggedRefDomain(rep RegistryReplacement, name reference.NamedTagged) (reference.NamedTagged, error) {
-	if reference.Domain(name) == rep.Old {
-		path := reference.Path(name)
+// Replace takes performs a RegistryReplacement and a NamedTagged and returns a new NamedTag with Old swapped for New
+// It errors if this isn't a valid NamedTagged
+func ReplaceNamedTagged(rep RegistryReplacement, name reference.NamedTagged) (reference.NamedTagged, error) {
+	ns := name.String()
 
-		new, err := reference.ParseNamed(fmt.Sprintf("%s/%s", rep.New, path))
-		if err != nil {
-			return nil, err
-		}
-
-		newTagged, err := reference.WithTag(new, name.Tag())
-		if err != nil {
-			return nil, err
-		}
-
-		return newTagged, nil
+	if !strings.Contains(ns, rep.Old) {
+		return name, nil
 	}
-	return name, nil
+
+	newNs := strings.Replace(ns, rep.Old, rep.New, 1)
+	newN, err := reference.ParseNamed(newNs)
+	if err != nil {
+		return nil, err
+	}
+	newNT, err := reference.WithTag(newN, name.Tag())
+	if err != nil {
+		return nil, err
+	}
+
+	return newNT, nil
 }
