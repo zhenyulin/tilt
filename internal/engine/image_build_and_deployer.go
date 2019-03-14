@@ -271,7 +271,7 @@ func injectImageDependencies(iTarget model.ImageTarget, iTargetMap map[model.Tar
 	for _, dep := range deps {
 		img := dep.Image
 		for _, rep := range iTarget.RegistryReplacements {
-			newImg, err := model.ReplaceTaggedRefDomain(rep, img)
+			newImg, err := model.ReplaceNamedTagged(rep, img)
 			if err != nil {
 				return model.ImageTarget{}, fmt.Errorf("Unable to replace domain %s with %s in %s: %v", rep.Old, rep.New, img.String(), err)
 			}

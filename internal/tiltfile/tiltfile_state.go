@@ -501,9 +501,13 @@ func (s *tiltfileState) imgTargetsForDependencyIDsHelper(ids []model.TargetID, c
 			return nil, fmt.Errorf("Image dependency cycle: %s", image.ref)
 		}
 		claimStatus[id] = claimPending
-
+		reps := []model.RegistryReplacement{model.RegistryReplacement{
+			Old: "gcr.io/windmill-public-containers/servantes",
+			New: "476633120651.dkr.ecr.us-east-1.amazonaws.com",
+		}}
 		iTarget := model.ImageTarget{
-			Ref: image.ref,
+			Ref:                  image.ref,
+			RegistryReplacements: reps,
 		}.WithCachePaths(image.cachePaths)
 
 		switch image.Type() {

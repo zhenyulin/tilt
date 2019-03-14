@@ -108,6 +108,13 @@ func (icb *imageAndCacheBuilder) Build(ctx context.Context, iTarget model.ImageT
 
 	if !canSkipPush {
 		var err error
+		for _, rep := range iTarget.RegistryReplacements {
+			newImg, err := model.ReplaceNamedTagged(rep, n)
+			if err != nil {
+				return nil, fmt.Errorf("Unable to replace domain %s with %s in %s: %v", rep.Old, rep.New, n.String(), err)
+			}
+			n = newImg
+		}
 		n, err = icb.ib.PushImage(ctx, n, ps.Writer(ctx))
 		if err != nil {
 			return nil, err
