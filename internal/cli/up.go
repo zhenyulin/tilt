@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/fatih/color"
@@ -24,8 +24,11 @@ import (
 	"github.com/windmilleng/tilt/internal/tracer"
 )
 
+const DefaultWebPort = 10350
+
 var updateModeFlag string = string(engine.UpdateModeAuto)
 var webModeFlag model.WebMode = model.ProdWebMode
+var webPort = 0
 var logActionsFlag bool = false
 
 type upCmd struct {
@@ -34,7 +37,6 @@ type upCmd struct {
 	traceTags   string
 	hud         bool
 	autoDeploy  bool
-	port        int
 	fileName    string
 }
 
@@ -55,7 +57,7 @@ func (c *upCmd) register() *cobra.Command {
 	cmd.Flags().BoolVar(&c.hud, "hud", true, "If true, tilt will open in HUD mode.")
 	cmd.Flags().BoolVar(&c.autoDeploy, "auto-deploy", true, "If false, tilt will wait on <spacebar> to trigger builds")
 	cmd.Flags().BoolVar(&logActionsFlag, "logactions", false, "log all actions and state changes")
-	cmd.Flags().IntVar(&c.port, "port", 0, "Port for the Tilt HTTP server")
+	cmd.Flags().IntVar(&webPort, "port", DefaultWebPort, "Port for the Tilt HTTP server. Set to 0 to disable.")
 	cmd.Flags().Lookup("logactions").Hidden = true
 	cmd.Flags().StringVar(&c.fileName, "file", tiltfile.FileName, "Path to Tiltfile")
 	err := cmd.Flags().MarkHidden("image-tag-prefix")
@@ -93,7 +95,6 @@ func (c *upCmd) run(ctx context.Context, args []string) error {
 
 	upper := threads.upper
 	h := threads.hud
-	server := threads.server
 
 	l := engine.NewLogActionLogger(ctx, upper.Dispatch)
 	ctx = logger.WithLogger(ctx, l)
@@ -130,32 +131,6 @@ func (c *upCmd) run(ctx context.Context, args []string) error {
 		})
 	}
 
-	if c.port != 0 {
-		g.Go(func() error {
-			defer cancel()
-			return threads.assetServer.Serve(ctx)
-		})
-
-		http.Handle("/", server.Router())
-		httpServer := &http.Server{
-			Addr:    fmt.Sprintf(":%d", c.port),
-			Handler: http.DefaultServeMux,
-		}
-
-		g.Go(func() error {
-			<-ctx.Done()
-			return httpServer.Shutdown(context.Background())
-		})
-
-		g.Go(func() error {
-			err := httpServer.ListenAndServe()
-			if err != nil && err != http.ErrServerClosed {
-				return err
-			}
-			return nil
-		})
-	}
-
 	triggerMode := model.TriggerAuto
 	if !c.autoDeploy {
 		triggerMode = model.TriggerManual
@@ -189,4 +164,20 @@ func provideLogActions() store.LogActionsFlag {
 
 func provideWebMode() model.WebMode {
 	return webModeFlag
+}
+
+func provideWebPort() model.WebPort {
+	return model.WebPort(webPort)
+}
+
+func provideWebURL(webPort model.WebPort) (model.WebURL, error) {
+	if webPort == 0 {
+		return model.WebURL{}, nil
+	}
+
+	url, err := url.Parse(fmt.Sprintf("http://localhost:%d/", webPort))
+	if err != nil {
+		return model.WebURL{}, err
+	}
+	return model.WebURL(*url), nil
 }

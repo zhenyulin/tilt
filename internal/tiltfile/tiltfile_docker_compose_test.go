@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
 	"github.com/windmilleng/tilt/internal/model"
 )
 
@@ -77,7 +78,7 @@ func TestDockerComposeManifest(t *testing.T) {
 		// TODO(maia): assert m.tiltFilename
 	)
 
-	expectedConfFiles := []string{"Tiltfile", "docker-compose.yml", "foo/Dockerfile"}
+	expectedConfFiles := []string{"Tiltfile", ".tiltignore", "docker-compose.yml", "foo/Dockerfile"}
 	f.assertConfigFiles(expectedConfFiles...)
 }
 
@@ -100,7 +101,7 @@ services:
 		// TODO(maia): assert m.tiltFilename
 	)
 
-	expectedConfFiles := []string{"Tiltfile", "docker-compose.yml"}
+	expectedConfFiles := []string{"Tiltfile", ".tiltignore", "docker-compose.yml"}
 	f.assertConfigFiles(expectedConfFiles...)
 }
 
@@ -131,7 +132,7 @@ services:
 		// TODO(maia): assert m.tiltFilename
 	)
 
-	expectedConfFiles := []string{"Tiltfile", "docker-compose.yml", "baz/alternate-Dockerfile"}
+	expectedConfFiles := []string{"Tiltfile", ".tiltignore", "docker-compose.yml", "baz/alternate-Dockerfile"}
 	f.assertConfigFiles(expectedConfFiles...)
 }
 
@@ -220,7 +221,7 @@ RUN echo hi`
 		// TODO(maia): assert m.tiltFilename
 	)
 
-	expectedConfFiles := []string{"Tiltfile", "docker-compose.yml", "foo/Dockerfile"}
+	expectedConfFiles := []string{"Tiltfile", ".tiltignore", "docker-compose.yml", "foo/Dockerfile"}
 	f.assertConfigFiles(expectedConfFiles...)
 }
 
@@ -313,7 +314,7 @@ dc_resource('foo', 'gcr.io/foo')
 
 	f.load()
 
-	m := f.assertNextManifest("foo", db(image("gcr.io/foo")))
+	m := f.assertNextManifest("foo", sb(image("gcr.io/foo")))
 	assert.True(t, m.ImageTargetAt(0).IsStaticBuild())
 	assert.False(t, m.ImageTargetAt(0).IsFastBuild())
 
@@ -335,7 +336,7 @@ dc_resource('foo', 'fooimage')
 
 	f.load()
 
-	m := f.assertNextManifest("foo", db(imageNormalized("fooimage")))
+	m := f.assertNextManifest("foo", sb(imageNormalized("fooimage")))
 	assert.True(t, m.ImageTargetAt(0).IsStaticBuild())
 	assert.False(t, m.ImageTargetAt(0).IsFastBuild())
 
@@ -381,11 +382,11 @@ dc_resource('bar', 'gcr.io/bar')
 
 	f.load()
 
-	foo := f.assertNextManifest("foo", db(image("gcr.io/foo")))
+	foo := f.assertNextManifest("foo", sb(image("gcr.io/foo")))
 	assert.True(t, foo.ImageTargetAt(0).IsStaticBuild())
 	assert.False(t, foo.ImageTargetAt(0).IsFastBuild())
 
-	bar := f.assertNextManifest("bar", db(image("gcr.io/bar")))
+	bar := f.assertNextManifest("bar", sb(image("gcr.io/bar")))
 	assert.True(t, foo.ImageTargetAt(0).IsStaticBuild())
 	assert.False(t, foo.ImageTargetAt(0).IsFastBuild())
 
@@ -415,11 +416,11 @@ docker_compose('docker-compose.yml')
 
 	f.load()
 
-	foo := f.assertNextManifest("foo", db(image("gcr.io/foo")))
+	foo := f.assertNextManifest("foo", sb(image("gcr.io/foo")))
 	assert.True(t, foo.ImageTargetAt(0).IsStaticBuild())
 	assert.False(t, foo.ImageTargetAt(0).IsFastBuild())
 
-	bar := f.assertNextManifest("bar", db(image("gcr.io/bar")))
+	bar := f.assertNextManifest("bar", sb(image("gcr.io/bar")))
 	assert.True(t, foo.ImageTargetAt(0).IsStaticBuild())
 	assert.False(t, foo.ImageTargetAt(0).IsFastBuild())
 
@@ -442,8 +443,7 @@ services:
 docker_build('gcr.typo.io/foo', 'foo')
 docker_compose('docker-compose.yml')
 `)
-	f.load()
-	f.assertWarnings("Image not used in any resource:\n    ✕ gcr.typo.io/foo\nDid you mean…\n    - gcr.io/foo\n    - docker.io/library/golang")
+	f.loadAssertWarnings("Image not used in any resource:\n    ✕ gcr.typo.io/foo\nDid you mean…\n    - gcr.io/foo\n    - docker.io/library/golang")
 }
 
 func TestDockerComposeOnlySomeWithDockerBuild(t *testing.T) {
@@ -460,7 +460,7 @@ dc_resource('foo', img_name)
 
 	f.load()
 
-	foo := f.assertNextManifest("foo", db(image("gcr.io/foo")))
+	foo := f.assertNextManifest("foo", sb(image("gcr.io/foo")))
 	assert.True(t, foo.ImageTargetAt(0).IsStaticBuild())
 	assert.False(t, foo.ImageTargetAt(0).IsFastBuild())
 

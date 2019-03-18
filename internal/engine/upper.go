@@ -9,17 +9,18 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
-	"github.com/windmilleng/tilt/internal/tiltfile"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 
 	"github.com/windmilleng/tilt/internal/container"
 	"github.com/windmilleng/tilt/internal/dockercompose"
 	"github.com/windmilleng/tilt/internal/hud"
+	"github.com/windmilleng/tilt/internal/hud/server"
 	"github.com/windmilleng/tilt/internal/hud/view"
 	"github.com/windmilleng/tilt/internal/k8s"
 	"github.com/windmilleng/tilt/internal/logger"
 	"github.com/windmilleng/tilt/internal/model"
+	"github.com/windmilleng/tilt/internal/sliceutils"
 	"github.com/windmilleng/tilt/internal/store"
 	"github.com/windmilleng/tilt/internal/synclet/sidecar"
 	"github.com/windmilleng/tilt/internal/watch"
@@ -69,7 +70,7 @@ func NewUpper(ctx context.Context, hud hud.HeadsUpDisplay, pw *PodWatcher, sw *S
 	st *store.Store, plm *PodLogManager, pfc *PortForwardController, fwm *WatchManager, bc *BuildController,
 	ic *ImageController, gybc *GlobalYAMLBuildController, cc *ConfigsController,
 	dcw *DockerComposeEventWatcher, dclm *DockerComposeLogManager, pm *ProfilerManager,
-	sm SyncletManager, ar *AnalyticsReporter) Upper {
+	sm SyncletManager, ar *AnalyticsReporter, hudsc *server.HeadsUpServerController) Upper {
 
 	st.AddSubscriber(bc)
 	st.AddSubscriber(hud)
@@ -86,6 +87,7 @@ func NewUpper(ctx context.Context, hud hud.HeadsUpDisplay, pw *PodWatcher, sw *S
 	st.AddSubscriber(pm)
 	st.AddSubscriber(sm)
 	st.AddSubscriber(ar)
+	st.AddSubscriber(hudsc)
 
 	return Upper{
 		store: st,
@@ -138,7 +140,7 @@ var UpperReducer = store.Reducer(func(ctx context.Context, state *store.EngineSt
 	switch action := action.(type) {
 	case InitAction:
 		err = handleInitAction(ctx, state, action)
-	case ErrorAction:
+	case store.ErrorAction:
 		err = action.Error
 	case hud.ExitAction:
 		handleExitAction(state, action)
@@ -178,6 +180,8 @@ var UpperReducer = store.Reducer(func(ctx context.Context, state *store.EngineSt
 		handleStartProfilingAction(state)
 	case hud.StopProfilingAction:
 		handleStopProfilingAction(state)
+	case hud.SetLogTimestampsAction:
+		handleLogTimestampsAction(state, action)
 	case TiltfileLogAction:
 		handleTiltfileLogAction(ctx, state, action)
 	default:
@@ -196,11 +200,15 @@ func handleBuildStarted(ctx context.Context, state *store.EngineState, action Bu
 		return
 	}
 
+	edits := []string{}
+	edits = append(edits, action.FilesChanged...)
+
 	bs := model.BuildRecord{
-		Edits:     append([]string{}, action.FilesChanged...),
+		Edits:     append(edits, ms.ConfigFilesThatCausedChange...),
 		StartTime: action.StartTime,
 		Reason:    action.Reason,
 	}
+	ms.ConfigFilesThatCausedChange = []string{}
 	ms.CurrentBuild = bs
 	ms.ExpectedContainerID = ""
 
@@ -210,7 +218,7 @@ func handleBuildStarted(ctx context.Context, state *store.EngineState, action Bu
 	}
 
 	if dcState, ok := ms.ResourceState.(dockercompose.State); ok {
-		ms.ResourceState = dcState.WithCurrentLog([]byte{})
+		ms.ResourceState = dcState.WithCurrentLog(model.Log{})
 	}
 
 	// Keep the crash log around until we have a rebuild
@@ -319,7 +327,7 @@ func handleBuildCompleted(ctx context.Context, engineState *store.EngineState, c
 			bestPod := ms.MostRecentPod()
 			if bestPod.StartedAt.After(bs.StartTime) ||
 				bestPod.UpdateStartTime.Equal(bs.StartTime) {
-				checkForPodCrash(ctx, ms, bestPod)
+				checkForPodCrash(ctx, engineState, ms, bestPod)
 			}
 		}
 	}
@@ -379,6 +387,10 @@ func handleStartProfilingAction(state *store.EngineState) {
 	state.IsProfiling = true
 }
 
+func handleLogTimestampsAction(state *store.EngineState, action hud.SetLogTimestampsAction) {
+	state.LogTimestamps = action.Value
+}
+
 func handleFSEvent(
 	ctx context.Context,
 	state *store.EngineState,
@@ -386,7 +398,7 @@ func handleFSEvent(
 
 	if event.targetID.Type == model.TargetTypeConfigs {
 		for _, f := range event.files {
-			state.PendingConfigFileChanges[f] = true
+			state.PendingConfigFileChanges[f] = event.time
 		}
 		return
 	}
@@ -437,11 +449,14 @@ func handleConfigsReloadStarted(
 	state *store.EngineState,
 	event ConfigsReloadStartedAction,
 ) {
-	state.PendingConfigFileChanges = make(map[string]bool)
+	filesChanged := []string{}
+	for f, _ := range event.FilesChanged {
+		filesChanged = append(filesChanged, f)
+	}
 	status := model.BuildRecord{
 		StartTime: event.StartTime,
 		Reason:    model.BuildReasonFlagConfig,
-		Edits:     []string{state.TiltfilePath},
+		Edits:     filesChanged,
 	}
 
 	state.CurrentTiltfileBuild = status
@@ -454,19 +469,20 @@ func handleConfigsReloaded(
 ) {
 	manifests := event.Manifests
 
-	status := model.BuildRecord{
-		StartTime:  event.StartTime,
-		FinishTime: event.FinishTime,
-		Error:      event.Err,
-		Warnings:   event.Warnings,
-		Reason:     model.BuildReasonFlagConfig,
-		Edits:      []string{state.TiltfilePath},
-		Log:        state.CurrentTiltfileBuild.Log,
-	}
+	status := state.CurrentTiltfileBuild
+	status.FinishTime = event.FinishTime
+	status.Error = event.Err
+	status.Warnings = event.Warnings
+
 	setLastTiltfileBuild(state, status)
 	state.CurrentTiltfileBuild = model.BuildRecord{}
 	if event.Err != nil {
 		// There was an error, so don't update status with the new, nonexistent state
+
+		// EXCEPT for the config file list, because we want to watch new config files even when the tiltfile is broken
+		// append any new config files found in the reload action
+		state.ConfigFiles = sliceutils.AppendWithoutDupes(state.ConfigFiles, event.ConfigFiles...)
+
 		return
 	}
 
@@ -478,6 +494,8 @@ func handleConfigsReloaded(
 		}
 
 		newDefOrder[i] = m.ManifestName()
+
+		configFilesThatChanged := state.LastTiltfileBuild.Edits
 		if !m.Equal(mt.Manifest) {
 			mt.Manifest = m
 
@@ -485,6 +503,7 @@ func handleConfigsReloaded(
 			state := mt.State
 			state.BuildStatuses = make(map[model.TargetID]*store.BuildStatus)
 			state.PendingManifestChange = time.Now()
+			state.ConfigFilesThatCausedChange = configFilesThatChanged
 		}
 		state.UpsertManifestTarget(mt)
 	}
@@ -493,6 +512,14 @@ func handleConfigsReloaded(
 	state.ManifestDefinitionOrder = newDefOrder
 	state.GlobalYAML = event.GlobalYAML
 	state.ConfigFiles = event.ConfigFiles
+	state.TiltIgnoreContents = event.TiltIgnoreContents
+
+	// Remove pending file changes that were consumed by this build.
+	for file, modTime := range state.PendingConfigFileChanges {
+		if modTime.Before(status.StartTime) {
+			delete(state.PendingConfigFileChanges, file)
+		}
+	}
 }
 
 // Get a pointer to a mutable manifest state,
@@ -678,7 +705,7 @@ func handlePodChangeAction(ctx context.Context, state *store.EngineState, pod *v
 	}
 
 	populateContainerStatus(ctx, manifest, podInfo, pod, cStatus)
-	checkForPodCrash(ctx, ms, *podInfo)
+	checkForPodCrash(ctx, state, ms, *podInfo)
 
 	if int(cStatus.RestartCount) > podInfo.ContainerRestarts {
 		podInfo.PreRestartLog = podInfo.CurrentLog
@@ -687,7 +714,7 @@ func handlePodChangeAction(ctx context.Context, state *store.EngineState, pod *v
 	podInfo.ContainerRestarts = int(cStatus.RestartCount)
 }
 
-func checkForPodCrash(ctx context.Context, ms *store.ManifestState, podInfo store.Pod) {
+func checkForPodCrash(ctx context.Context, state *store.EngineState, ms *store.ManifestState, podInfo store.Pod) {
 	if ms.NeedsRebuildFromCrash {
 		// We're already aware the pod is crashing.
 		return
@@ -703,11 +730,11 @@ func checkForPodCrash(ctx context.Context, ms *store.ManifestState, podInfo stor
 	ms.NeedsRebuildFromCrash = true
 	ms.ExpectedContainerID = ""
 	msg := fmt.Sprintf("Detected a container change for %s. We could be running stale code. Rebuilding and deploying a new image.", ms.Name)
-	b := []byte(msg + "\n")
+	le := newLogEvent([]byte(msg + "\n"))
 	if len(ms.BuildHistory) > 0 {
-		ms.BuildHistory[0].Log = model.AppendLog(ms.BuildHistory[0].Log, b)
+		ms.BuildHistory[0].Log = model.AppendLog(ms.BuildHistory[0].Log, le, state.LogTimestamps)
 	}
-	ms.CurrentBuild.Log = model.AppendLog(ms.CurrentBuild.Log, b)
+	ms.CurrentBuild.Log = model.AppendLog(ms.CurrentBuild.Log, le, state.LogTimestamps)
 	logger.Get(ctx).Infof("%s", msg)
 }
 
@@ -747,7 +774,7 @@ func handlePodLogAction(state *store.EngineState, action PodLogAction) {
 		return
 	}
 
-	ms.CombinedLog = model.AppendLog(ms.CombinedLog, action.Log)
+	ms.CombinedLog = model.AppendLog(ms.CombinedLog, action, state.LogTimestamps)
 
 	podID := action.PodID
 	if !ms.PodSet.ContainsID(podID) {
@@ -766,7 +793,7 @@ func handlePodLogAction(state *store.EngineState, action PodLogAction) {
 	}
 
 	podInfo := ms.PodSet.Pods[podID]
-	podInfo.CurrentLog = model.AppendLog(podInfo.CurrentLog, action.Log)
+	podInfo.CurrentLog = model.AppendLog(podInfo.CurrentLog, action, state.LogTimestamps)
 }
 
 func handleBuildLogAction(state *store.EngineState, action BuildLogAction) {
@@ -778,12 +805,12 @@ func handleBuildLogAction(state *store.EngineState, action BuildLogAction) {
 		return
 	}
 
-	ms.CombinedLog = model.AppendLog(ms.CombinedLog, action.Log)
-	ms.CurrentBuild.Log = model.AppendLog(ms.CurrentBuild.Log, action.Log)
+	ms.CombinedLog = model.AppendLog(ms.CombinedLog, action, state.LogTimestamps)
+	ms.CurrentBuild.Log = model.AppendLog(ms.CurrentBuild.Log, action, state.LogTimestamps)
 }
 
 func handleLogAction(state *store.EngineState, action LogAction) {
-	state.Log = model.AppendLog(state.Log, action.Log)
+	state.Log = model.AppendLog(state.Log, action, state.LogTimestamps)
 }
 
 func handleServiceEvent(ctx context.Context, state *store.EngineState, action ServiceChangeAction) {
@@ -831,7 +858,7 @@ func handleInitAction(ctx context.Context, engineState *store.EngineState, actio
 		engineState.InitialBuildCount = len(manifests)
 	} else {
 		// NOTE(dmiller): this kicks off a Tiltfile build
-		engineState.PendingConfigFileChanges[action.TiltfilePath] = true
+		engineState.PendingConfigFileChanges[action.TiltfilePath] = time.Now()
 		engineState.InitialBuildCount = len(action.InitManifests)
 	}
 
@@ -842,8 +869,8 @@ func handleInitAction(ctx context.Context, engineState *store.EngineState, actio
 
 func setLastTiltfileBuild(state *store.EngineState, status model.BuildRecord) {
 	if status.Error != nil {
-		log := []byte(fmt.Sprintf("%v\n", status.Error))
-		status.Log = model.AppendLog(status.Log, log)
+		le := logEvent{time.Now(), []byte(fmt.Sprintf("%v\n", status.Error))}
+		status.Log = model.AppendLog(status.Log, le, state.LogTimestamps)
 	}
 	state.LastTiltfileBuild = status
 }
@@ -907,10 +934,10 @@ func handleDockerComposeLogAction(state *store.EngineState, action DockerCompose
 	}
 
 	dcState, _ := ms.ResourceState.(dockercompose.State)
-	ms.ResourceState = dcState.WithCurrentLog(append(dcState.CurrentLog, action.Log...))
+	ms.ResourceState = dcState.WithCurrentLog(model.AppendLog(dcState.CurrentLog, action, state.LogTimestamps))
 }
 
 func handleTiltfileLogAction(ctx context.Context, state *store.EngineState, action TiltfileLogAction) {
-	state.CurrentTiltfileBuild.Log = model.AppendLog(state.CurrentTiltfileBuild.Log, action.Log)
-	logger.Get(ctx).Infof("[%s] %s", tiltfile.FileName, string(action.Log))
+	state.CurrentTiltfileBuild.Log = model.AppendLog(state.CurrentTiltfileBuild.Log, action, state.LogTimestamps)
+	state.TiltfileCombinedLog = model.AppendLog(state.TiltfileCombinedLog, action, state.LogTimestamps)
 }

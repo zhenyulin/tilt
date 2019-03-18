@@ -1,4 +1,7 @@
 project_name: tilt
+before:
+  hooks:
+    - ./scripts/upload-assets.py latest
 builds:
 - env:
   main: ./cmd/tilt/main.go

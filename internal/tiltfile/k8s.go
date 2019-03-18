@@ -10,6 +10,7 @@ import (
 	"go.starlark.net/starlark"
 	"k8s.io/apimachinery/pkg/labels"
 
+	"github.com/windmilleng/tilt/internal/container"
 	"github.com/windmilleng/tilt/internal/k8s"
 	"github.com/windmilleng/tilt/internal/model"
 )
@@ -38,6 +39,9 @@ type k8sResource struct {
 
 	// Options. These define how the engine and UI should treat this resource.
 
+	// Map of imageRefs, to avoid dupes
+	imageRefMap map[string]bool
+
 	portForwards []portForward
 
 	// labels for pods that we should watch and associate with this resource
@@ -47,8 +51,6 @@ type k8sResource struct {
 
 	// k8s resources to be deployed
 	entities []k8s.K8sEntity
-
-	dependencyIDs []model.TargetID
 }
 
 // func (r *k8sResource) addProvidedImageRef(ref reference.Named) {
@@ -120,13 +122,14 @@ func yamlDesc(entities []k8s.K8sEntity) string {
 
 func (s *tiltfileState) filterYaml(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var yamlValue, labelsValue starlark.Value
-	var name, namespace, kind string
+	var name, namespace, kind, apiVersion string
 	err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 		"yaml", &yamlValue,
 		"labels?", &labelsValue,
 		"name?", &name,
 		"namespace?", &namespace,
 		"kind?", &kind,
+		"api_version?", &apiVersion,
 	)
 	if err != nil {
 		return nil, err
@@ -150,48 +153,34 @@ func (s *tiltfileState) filterYaml(thread *starlark.Thread, fn *starlark.Builtin
 		return nil, err
 	}
 
-	var allRest []k8s.K8sEntity
-	match := entities
+	k, err := newK8SObjectSelector(apiVersion, kind, name, namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	var match, rest []k8s.K8sEntity
+	for _, e := range entities {
+		if k.matches(e) {
+			match = append(match, e)
+		} else {
+			rest = append(rest, e)
+		}
+	}
+
 	if len(metaLabels) > 0 {
-		match, allRest, err = k8s.FilterByMetadataLabels(match, metaLabels)
+		var r []k8s.K8sEntity
+		match, r, err = k8s.FilterByMetadataLabels(match, metaLabels)
 		if err != nil {
 			return nil, err
 		}
-	}
-
-	if name != "" {
-		var rest []k8s.K8sEntity
-		match, rest, err = k8s.FilterByName(match, name)
-		if err != nil {
-			return nil, err
-		}
-		allRest = append(allRest, rest...)
-
-	}
-
-	if namespace != "" {
-		var rest []k8s.K8sEntity
-		match, rest, err = k8s.FilterByNamespace(match, namespace)
-		if err != nil {
-			return nil, err
-		}
-		allRest = append(allRest, rest...)
-	}
-
-	if kind != "" {
-		var rest []k8s.K8sEntity
-		match, rest, err = k8s.FilterByKind(match, kind)
-		if err != nil {
-			return nil, err
-		}
-		allRest = append(allRest, rest...)
+		rest = append(rest, r...)
 	}
 
 	matchingStr, err := k8s.SerializeYAML(match)
 	if err != nil {
 		return nil, err
 	}
-	restStr, err := k8s.SerializeYAML(allRest)
+	restStr, err := k8s.SerializeYAML(rest)
 	if err != nil {
 		return nil, err
 	}
@@ -384,32 +373,87 @@ func podLabelsFromStarlarkValue(v starlark.Value) ([]labels.Selector, error) {
 	}
 }
 
-func (s *tiltfileState) k8sKind(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	var kind string
-	if err := starlark.UnpackArgs(fn.Name(), args, nil,
-		"kind", &kind,
+func starlarkValuesToJSONPaths(values []starlark.Value) ([]k8s.JSONPath, error) {
+	var paths []k8s.JSONPath
+	for _, v := range values {
+		s, ok := v.(starlark.String)
+		if !ok {
+			return nil, fmt.Errorf("path must be a string or list of strings, found a list containing value '%+v' of type '%T'", v, v)
+		}
+
+		jp, err := k8s.NewJSONPath(s.String())
+		if err != nil {
+			return nil, errors.Wrapf(err, "error parsing json path '%s'", s.String())
+		}
+
+		paths = append(paths, jp)
+	}
+
+	return paths, nil
+}
+
+func (s *tiltfileState) k8sImageJsonPath(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var apiVersion, kind, name, namespace string
+	var imageJSONPath starlark.Value
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+		"path", &imageJSONPath,
+		"api_version?", &apiVersion,
+		"kind?", &kind,
+		"name?", &name,
+		"namespace?", &namespace,
 	); err != nil {
 		return nil, err
 	}
 
-	// unpacked separately so that this is a keyword-only arg
+	if kind == "" && name == "" && namespace == "" {
+		return nil, errors.New("at least one of kind, name, or namespace must be specified")
+	}
+
+	values := starlarkValueOrSequenceToSlice(imageJSONPath)
+
+	paths, err := starlarkValuesToJSONPaths(values)
+	if err != nil {
+		return nil, err
+	}
+
+	k, err := newK8SObjectSelector(apiVersion, kind, name, namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	s.k8sImageJSONPaths[k] = paths
+
+	return starlark.None, nil
+}
+
+func (s *tiltfileState) k8sKind(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	// require image_json_path to be passed as a kw arg since `k8s_kind("Environment", "{.foo.bar}")` feels confusing
+	if len(args) > 1 {
+		return nil, fmt.Errorf("%s: got %d arguments, want at most %d", fn.Name(), len(args), 1)
+	}
+
+	var apiVersion, kind string
 	var imageJSONPath starlark.Value
-	if err := starlark.UnpackArgs(fn.Name(), nil, kwargs,
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+		"kind", &kind,
 		"image_json_path", &imageJSONPath,
+		"api_version?", &apiVersion,
 	); err != nil {
 		return nil, err
 	}
 
 	values := starlarkValueOrSequenceToSlice(imageJSONPath)
-	var paths []string
-	for _, v := range values {
-		s, ok := v.(starlark.String)
-		if !ok {
-			return nil, fmt.Errorf("image_json_path must be a string or list of strings, found a list containing value '%+v' of type '%T'", v, v)
-		}
-		paths = append(paths, s.String())
+	paths, err := starlarkValuesToJSONPaths(values)
+	if err != nil {
+		return nil, err
 	}
-	s.k8sImageJsonPathsByKind[kind] = paths
+
+	k, err := newK8SObjectSelector(apiVersion, kind, "", "")
+	if err != nil {
+		return nil, err
+	}
+
+	s.k8sImageJSONPaths[k] = paths
 
 	return starlark.None, nil
 }
@@ -462,7 +506,7 @@ func (s *tiltfileState) yamlEntitiesFromSkylarkValue(v starlark.Value) ([]k8s.K8
 		}
 		bs, err := s.readFile(yamlPath)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "error reading yaml file")
 		}
 		entities, err := k8s.ParseYAMLFromString(string(bs))
 		if err != nil {
@@ -600,4 +644,18 @@ func (s *tiltfileState) portForwardsToDomain(r *k8sResource) []model.PortForward
 		result = append(result, model.PortForward{LocalPort: pf.local, ContainerPort: pf.container})
 	}
 	return result
+}
+
+// returns any defined image JSON paths that apply to the given entity
+func (s *tiltfileState) imageJSONPaths(e k8s.K8sEntity) []k8s.JSONPath {
+	var ret []k8s.JSONPath
+
+	for k, v := range s.k8sImageJSONPaths {
+		if !k.matches(e) {
+			continue
+		}
+		ret = append(ret, v...)
+	}
+
+	return ret
 }

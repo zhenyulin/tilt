@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"runtime/pprof"
@@ -27,6 +28,7 @@ import (
 	"github.com/windmilleng/tilt/internal/docker"
 	"github.com/windmilleng/tilt/internal/dockercompose"
 	"github.com/windmilleng/tilt/internal/hud"
+	"github.com/windmilleng/tilt/internal/hud/server"
 	"github.com/windmilleng/tilt/internal/hud/view"
 	"github.com/windmilleng/tilt/internal/k8s"
 	"github.com/windmilleng/tilt/internal/k8s/testyaml"
@@ -44,7 +46,10 @@ import (
 var originalWD string
 
 func init() {
-	wd, _ := os.Getwd()
+	wd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
 	originalWD = wd
 }
 
@@ -128,9 +133,15 @@ type fakeBuildAndDeployer struct {
 
 var _ BuildAndDeployer = &fakeBuildAndDeployer{}
 
-func (b *fakeBuildAndDeployer) nextBuildResult(iTarget model.ImageTarget, isDeployed bool) store.BuildResult {
-	nt, _ := reference.WithTag(iTarget.Ref.AsNamedOnly(), fmt.Sprintf("tilt-%d", b.buildCount))
+func (b *fakeBuildAndDeployer) nextBuildResult(iTarget model.ImageTarget, deployTarget model.TargetSpec) store.BuildResult {
+	named := iTarget.Ref.AsNamedOnly()
+	nt, _ := reference.WithTag(named, fmt.Sprintf("tilt-%d", b.buildCount))
 	containerID := b.nextBuildContainer
+	_, isDC := deployTarget.(model.DockerComposeTarget)
+	if isDC && containerID == "" {
+		// DockerCompose creates a container ID synchronously.
+		containerID = container.ID(fmt.Sprintf("dc-%s", path.Base(named.Name())))
+	}
 	result := store.NewImageBuildResult(iTarget.ID(), nt)
 	result.ContainerID = containerID
 	return result
@@ -184,14 +195,18 @@ func (b *fakeBuildAndDeployer) BuildAndDeploy(ctx context.Context, st store.RSto
 
 	result := store.BuildResultSet{}
 	for _, iTarget := range extractImageTargets(specs) {
-		isDeployed := false
+		var deployTarget model.TargetSpec
 		if !call.dc().Empty() {
-			isDeployed = isImageDeployedToDC(iTarget, call.dc())
+			if isImageDeployedToDC(iTarget, call.dc()) {
+				deployTarget = call.dc()
+			}
 		} else {
-			isDeployed = isImageDeployedToK8s(iTarget, []model.K8sTarget{call.k8s()})
+			if isImageDeployedToK8s(iTarget, []model.K8sTarget{call.k8s()}) {
+				deployTarget = call.k8s()
+			}
 		}
 
-		result[iTarget.ID()] = b.nextBuildResult(iTarget, isDeployed)
+		result[iTarget.ID()] = b.nextBuildResult(iTarget, deployTarget)
 	}
 
 	if !call.dc().Empty() {
@@ -656,10 +671,11 @@ func TestNoOpChangeToDockerfile(t *testing.T) {
 	f.WriteFile("Tiltfile", `
 r = local_git_repo('.')
 fast_build('gcr.io/windmill-public-containers/servantes/snack', 'Dockerfile') \
-  .add(r, '.')
+  .add(r.path('src'), '.')
 k8s_resource('foobar', 'snack.yaml')`)
 	f.WriteFile("Dockerfile", `FROM iron/go:dev1`)
 	f.WriteFile("snack.yaml", simpleYAML)
+	f.WriteFile("src/main.go", "hello")
 
 	f.loadAndStart()
 
@@ -673,7 +689,8 @@ k8s_resource('foobar', 'snack.yaml')`)
 	// The dockerfile hasn't changed, so there shouldn't be any builds.
 	f.assertNoCall()
 
-	f.store.Dispatch(newTargetFilesChangedAction(call.image().ID(), f.JoinPath("random_file.go")))
+	changed := f.WriteFile("src/main.go", "goodbye")
+	f.fsWatcher.events <- watch.FileEvent{Path: changed}
 
 	// Second call: Editing the Dockerfile means we have to reevaluate the Tiltfile.
 	// Editing the random file means we have to do a rebuild. BUT! The Dockerfile
@@ -681,7 +698,7 @@ k8s_resource('foobar', 'snack.yaml')`)
 	call = f.nextCall("incremental build despite edited config file")
 	assert.Equal(t, "foobar", string(call.k8s().Name))
 	assert.ElementsMatch(t, []string{
-		f.JoinPath("random_file.go"),
+		f.JoinPath("src/main.go"),
 	}, call.oneState().FilesChanged())
 
 	// Unchanged manifest --> we do NOT clear the build state
@@ -1061,7 +1078,7 @@ func TestPodEventOrdering(t *testing.T) {
 			f.upper.store.Dispatch(PodLogAction{
 				ManifestName: "fe",
 				PodID:        k8s.PodIDFromPod(podBNow),
-				Log:          []byte("pod b log\n"),
+				logEvent:     newLogEvent([]byte("pod b log\n")),
 			})
 
 			f.WaitUntilManifestState("pod log seen", "fe", func(ms store.ManifestState) bool {
@@ -1793,6 +1810,23 @@ func TestNewMountsAreWatched(t *testing.T) {
 	})
 }
 
+func TestNewConfigsAreWatchedAfterFailure(t *testing.T) {
+	f := newTestFixture(t)
+	mount := model.Mount{LocalPath: "/go", ContainerPath: "/go"}
+	name := model.ManifestName("foo")
+	m := f.newManifest(name.String(), []model.Mount{mount})
+	f.Start([]model.Manifest{m}, true)
+	f.WriteConfigFiles("Tiltfile", "read_file('foo.txt')")
+	f.WaitUntil("foo.txt is a config file", func(state store.EngineState) bool {
+		for _, s := range state.ConfigFiles {
+			if s == f.JoinPath("foo.txt") {
+				return true
+			}
+		}
+		return false
+	})
+}
+
 func TestDockerComposeUp(t *testing.T) {
 	f := newTestFixture(t)
 	redis, server := f.setupDCFixture()
@@ -2084,6 +2118,38 @@ func TestWatchManifestsWithCommonAncestor(t *testing.T) {
 
 }
 
+func TestConfigChangeThatChangesManifestIsIncludedInManifestsChangedFile(t *testing.T) {
+	f := newTestFixture(t)
+	defer f.TearDown()
+
+	tiltfile := `
+docker_build('gcr.io/windmill-public-containers/servantes/snack', '.')
+k8s_yaml('snack.yaml')`
+	f.WriteFile("Tiltfile", tiltfile)
+	f.WriteFile("Dockerfile", `FROM iron/go:dev`)
+	f.WriteFile("snack.yaml", simpleYAML)
+
+	f.loadAndStart()
+
+	f.waitForCompletedBuildCount(1)
+
+	f.WriteFile("snack.yaml", testyaml.SnackYAMLPostConfig)
+	f.fsWatcher.events <- watch.FileEvent{Path: f.JoinPath("snack.yaml")}
+
+	f.waitForCompletedBuildCount(2)
+	f.withManifestState(model.ManifestName("snack"), func(ms store.ManifestState) {
+		assert.Equal(t, []string{f.JoinPath("snack.yaml")}, ms.LastBuild().Edits)
+	})
+
+	f.WriteFile("Dockerfile", `FROM iron/go:foobar`)
+	f.fsWatcher.events <- watch.FileEvent{Path: f.JoinPath("Dockerfile")}
+
+	f.waitForCompletedBuildCount(3)
+	f.withManifestState(model.ManifestName("snack"), func(ms store.ManifestState) {
+		assert.Equal(t, []string{f.JoinPath("Dockerfile")}, ms.LastBuild().Edits)
+	})
+}
+
 type fakeTimerMaker struct {
 	restTimerLock *sync.Mutex
 	maxTimerLock  *sync.Mutex
@@ -2139,8 +2205,8 @@ type testFixture struct {
 	bc                    *BuildController
 	fwm                   *WatchManager
 	cc                    *ConfigsController
-	originalWD            string
 	dcc                   *dockercompose.FakeDCClient
+	tfl                   tiltfile.TiltfileLoader
 
 	onchangeCh chan bool
 }
@@ -2152,8 +2218,8 @@ func newTestFixture(t *testing.T) *testFixture {
 
 	timerMaker := makeFakeTimerMaker(t)
 
-	docker := docker.NewFakeClient()
-	reaper := build.NewImageReaper(docker)
+	dockerClient := docker.NewFakeClient()
+	reaper := build.NewImageReaper(dockerClient)
 
 	k8s := k8s.NewFakeK8sClient()
 	pw := NewPodWatcher(k8s)
@@ -2171,8 +2237,14 @@ func newTestFixture(t *testing.T) *testFixture {
 	plm := NewPodLogManager(k8s)
 	bc := NewBuildController(b)
 
-	_ = os.Chdir(f.Path())
-	_ = os.Mkdir(f.JoinPath(".git"), os.FileMode(0777))
+	err := os.Chdir(f.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = os.Mkdir(f.JoinPath(".git"), os.FileMode(0777))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	fwm := NewWatchManager(watcher.newSub, timerMaker.maker())
 	pfc := NewPortForwardController(k8s)
@@ -2180,14 +2252,20 @@ func newTestFixture(t *testing.T) *testFixture {
 	gybc := NewGlobalYAMLBuildController(k8s)
 	an := analytics.NewMemoryAnalytics()
 	ar := ProvideAnalyticsReporter(an, st)
-	cc := NewConfigsController(tiltfile.NewTiltfileLoader())
-	dcc := dockercompose.NewFakeDockerComposeClient(t, ctx)
-	dcw := NewDockerComposeEventWatcher(dcc)
-	dclm := NewDockerComposeLogManager(dcc)
+
+	// TODO(nick): Why does this test use two different docker compose clients???
+	fakeDcc := dockercompose.NewFakeDockerComposeClient(t, ctx)
+	realDcc := dockercompose.NewDockerComposeClient(docker.Env{})
+
+	tfl := tiltfile.ProvideTiltfileLoader(an, realDcc)
+	cc := NewConfigsController(tfl)
+	dcw := NewDockerComposeEventWatcher(fakeDcc)
+	dclm := NewDockerComposeLogManager(fakeDcc)
 	pm := NewProfilerManager()
 	sCli := synclet.NewFakeSyncletClient()
 	sm := NewSyncletManagerForTests(k8s, sCli)
-	upper := NewUpper(ctx, fakeHud, pw, sw, st, plm, pfc, fwm, bc, ic, gybc, cc, dcw, dclm, pm, sm, ar)
+	hudsc := server.ProvideHeadsUpServerController(0, server.HeadsUpServer{}, nil)
+	upper := NewUpper(ctx, fakeHud, pw, sw, st, plm, pfc, fwm, bc, ic, gybc, cc, dcw, dclm, pm, sm, ar, hudsc)
 
 	go func() {
 		fakeHud.Run(ctx, upper.Dispatch, hud.DefaultRefreshInterval)
@@ -2201,7 +2279,7 @@ func newTestFixture(t *testing.T) *testFixture {
 		b:              b,
 		fsWatcher:      watcher,
 		timerMaker:     &timerMaker,
-		docker:         docker,
+		docker:         dockerClient,
 		hud:            fakeHud,
 		log:            log,
 		store:          st,
@@ -2209,8 +2287,8 @@ func newTestFixture(t *testing.T) *testFixture {
 		onchangeCh:     fSub.ch,
 		fwm:            fwm,
 		cc:             cc,
-		originalWD:     originalWD,
-		dcc:            dcc,
+		dcc:            fakeDcc,
+		tfl:            tfl,
 	}
 }
 
@@ -2443,7 +2521,7 @@ func (f *testFixture) podLog(manifestName model.ManifestName, s string) {
 	f.upper.store.Dispatch(PodLogAction{
 		ManifestName: manifestName,
 		PodID:        k8s.PodID(f.pod.Name),
-		Log:          []byte(s + "\n"),
+		logEvent:     newLogEvent([]byte(s + "\n")),
 	})
 
 	f.WaitUntilManifestState("pod log seen", manifestName, func(ms store.ManifestState) bool {
@@ -2526,11 +2604,11 @@ func (f *testFixture) assertAllBuildsConsumed() {
 }
 
 func (f *testFixture) loadAndStart() {
-	manifests, _, _, _, err := tiltfile.NewTiltfileLoader().Load(f.ctx, f.JoinPath(tiltfile.FileName), nil, os.Stdout)
+	tlr, err := f.tfl.Load(f.ctx, f.JoinPath(tiltfile.FileName), nil)
 	if err != nil {
 		f.T().Fatal(err)
 	}
-	f.Start(manifests, true)
+	f.Start(tlr.Manifests, true)
 }
 
 func (f *testFixture) WriteConfigFiles(args ...string) {
@@ -2538,23 +2616,35 @@ func (f *testFixture) WriteConfigFiles(args ...string) {
 		f.T().Fatalf("WriteConfigFiles needs an even number of arguments; got %d", len(args))
 	}
 
-	var filenames []string
+	filenames := []string{}
 	for i := 0; i < len(args); i += 2 {
-		f.WriteFile(args[i], args[i+1])
-		filenames = append(filenames, args[i])
+		filename := f.JoinPath(args[i])
+		contents := args[i+1]
+		f.WriteFile(filename, contents)
+		filenames = append(filenames, filename)
+
+		// Fire an FS event thru the normal pipeline, so that manifests get marked dirty.
+		f.fsWatcher.events <- watch.FileEvent{Path: filename}
 	}
+
+	// The test harness was written for a time when most tests didn't
+	// have a Tiltfile. So
+	// 1) Tiltfile execution doesn't happen at test startup
+	// 2) Because the Tiltfile isn't executed, ConfigFiles isn't populated
+	// 3) Because ConfigFiles isn't populated, ConfigsTargetID watches aren't set up properly
+	// So just fire a change action manually.
 	f.store.Dispatch(newTargetFilesChangedAction(ConfigsTargetID, filenames...))
 }
 
 func (f *testFixture) setupDCFixture() (redis, server model.Manifest) {
-	dcp := filepath.Join(f.originalWD, "testdata", "fixture_docker-config.yml")
+	dcp := filepath.Join(originalWD, "testdata", "fixture_docker-config.yml")
 	dcpc, err := ioutil.ReadFile(dcp)
 	if err != nil {
 		f.T().Fatal(err)
 	}
 	f.WriteFile("docker-compose.yml", string(dcpc))
 
-	dfp := filepath.Join(f.originalWD, "testdata", "server.dockerfile")
+	dfp := filepath.Join(originalWD, "testdata", "server.dockerfile")
 	dfc, err := ioutil.ReadFile(dfp)
 	if err != nil {
 		f.T().Fatal(err)
@@ -2563,12 +2653,16 @@ func (f *testFixture) setupDCFixture() (redis, server model.Manifest) {
 
 	f.WriteFile("Tiltfile", `docker_compose('docker-compose.yml')`)
 
-	manifests, _, _, _, err := tiltfile.NewTiltfileLoader().Load(f.ctx, f.JoinPath("Tiltfile"), nil, os.Stdout)
+	tlr, err := f.tfl.Load(f.ctx, f.JoinPath("Tiltfile"), nil)
 	if err != nil {
 		f.T().Fatal(err)
 	}
 
-	return manifests[0], manifests[1]
+	if len(tlr.Manifests) != 2 {
+		f.T().Fatalf("Expected two manifests. Actual: %v", tlr.Manifests)
+	}
+
+	return tlr.Manifests[0], tlr.Manifests[1]
 }
 
 func (f *testFixture) setBuildLogOutput(id model.TargetID, output string) {

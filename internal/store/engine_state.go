@@ -11,6 +11,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 
 	"github.com/docker/distribution/reference"
+
 	"github.com/windmilleng/tilt/internal/container"
 	"github.com/windmilleng/tilt/internal/dockercompose"
 	"github.com/windmilleng/tilt/internal/hud/view"
@@ -61,7 +62,8 @@ type EngineState struct {
 
 	TiltfilePath             string
 	ConfigFiles              []string
-	PendingConfigFileChanges map[string]bool
+	TiltIgnoreContents       string
+	PendingConfigFileChanges map[string]time.Time
 
 	// InitManifests is the list of manifest names that we were told to init from the CLI.
 	InitManifests []model.ManifestName
@@ -69,10 +71,12 @@ type EngineState struct {
 	TriggerMode  model.TriggerMode
 	TriggerQueue []model.ManifestName
 
-	IsProfiling bool
+	LogTimestamps bool
+	IsProfiling   bool
 
 	LastTiltfileBuild    model.BuildRecord
 	CurrentTiltfileBuild model.BuildRecord
+	TiltfileCombinedLog  model.Log
 }
 
 func (e *EngineState) ManifestNamesForTargetID(id model.TargetID) []model.ManifestName {
@@ -244,13 +248,16 @@ type ManifestState struct {
 
 	// The log stream for this resource
 	CombinedLog model.Log `testdiff:"ignore"`
+
+	// If this manifest was changed, which config files led to the most recent change in manifest definition
+	ConfigFilesThatCausedChange []string
 }
 
 func NewState() *EngineState {
 	ret := &EngineState{}
 	ret.Log = model.Log{}
 	ret.ManifestTargets = make(map[model.ManifestName]*ManifestTarget)
-	ret.PendingConfigFileChanges = make(map[string]bool)
+	ret.PendingConfigFileChanges = make(map[string]time.Time)
 	return ret
 }
 
@@ -603,8 +610,9 @@ func ManifestTargetEndpoints(mt *ManifestTarget) (endpoints []string) {
 
 func StateToView(s EngineState) view.View {
 	ret := view.View{
-		TriggerMode: s.TriggerMode,
-		IsProfiling: s.IsProfiling,
+		TriggerMode:   s.TriggerMode,
+		IsProfiling:   s.IsProfiling,
+		LogTimestamps: s.LogTimestamps,
 	}
 
 	for _, name := range s.ManifestDefinitionOrder {
@@ -708,6 +716,7 @@ func StateToView(s EngineState) view.View {
 		BuildHistory: []model.BuildRecord{
 			ltfb,
 		},
+		CombinedLog: s.TiltfileCombinedLog,
 	}
 	if !s.CurrentTiltfileBuild.Empty() {
 		tr.PendingBuildSince = s.CurrentTiltfileBuild.StartTime

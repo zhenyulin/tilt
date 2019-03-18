@@ -1,12 +1,12 @@
 import React from 'react';
-import './LoadingScreen.css';
+import './LoadingScreen.scss';
 
 function LoadingScreen(props) {
   let message = props.message || 'Loading…'
   return (
-    <header className="LoadingScreen">
+    <div className="LoadingScreen">
       {message}
-    </header>
+    </div>
   )
 }
 

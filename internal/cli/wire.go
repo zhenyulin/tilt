@@ -51,7 +51,7 @@ var BaseWireSet = wire.NewSet(
 
 	build.NewImageReaper,
 
-	tiltfile.NewTiltfileLoaderWithAnalytics,
+	tiltfile.ProvideTiltfileLoader,
 
 	engine.DeployerWireSet,
 	engine.NewPodLogManager,
@@ -81,9 +81,13 @@ var BaseWireSet = wire.NewSet(
 	engine.ProvideFsWatcherMaker,
 	engine.ProvideTimerMaker,
 
+	provideWebVersion,
 	provideWebMode,
+	provideWebURL,
+	provideWebPort,
 	server.ProvideHeadsUpServer,
 	server.ProvideAssetServer,
+	server.ProvideHeadsUpServerController,
 
 	provideThreads,
 )
@@ -99,14 +103,12 @@ func wireThreads(ctx context.Context) (Threads, error) {
 }
 
 type Threads struct {
-	hud         hud.HeadsUpDisplay
-	upper       engine.Upper
-	server      server.HeadsUpServer
-	assetServer server.AssetServer
+	hud   hud.HeadsUpDisplay
+	upper engine.Upper
 }
 
-func provideThreads(h hud.HeadsUpDisplay, upper engine.Upper, server server.HeadsUpServer, assetServer server.AssetServer) Threads {
-	return Threads{h, upper, server, assetServer}
+func provideThreads(h hud.HeadsUpDisplay, upper engine.Upper) Threads {
+	return Threads{h, upper}
 }
 
 func wireK8sClient(ctx context.Context) (k8s.Client, error) {
@@ -147,6 +149,28 @@ func wireDockerVersion(ctx context.Context) (types.Version, error) {
 func wireDockerEnv(ctx context.Context) (docker.Env, error) {
 	wire.Build(BaseWireSet)
 	return docker.Env{}, nil
+}
+
+func wireDownDeps(ctx context.Context) (DownDeps, error) {
+	wire.Build(BaseWireSet, ProvideDownDeps)
+	return DownDeps{}, nil
+}
+
+type DownDeps struct {
+	tfl      tiltfile.TiltfileLoader
+	dcClient dockercompose.DockerComposeClient
+	kClient  k8s.Client
+}
+
+func ProvideDownDeps(
+	tfl tiltfile.TiltfileLoader,
+	dcClient dockercompose.DockerComposeClient,
+	kClient k8s.Client) DownDeps {
+	return DownDeps{
+		tfl:      tfl,
+		dcClient: dcClient,
+		kClient:  kClient,
+	}
 }
 
 func provideClock() func() time.Time {

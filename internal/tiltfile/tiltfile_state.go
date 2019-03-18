@@ -3,9 +3,11 @@ package tiltfile
 import (
 	"context"
 	"fmt"
-	"log"
 	"path/filepath"
+	"regexp"
 	"strings"
+
+	"github.com/windmilleng/tilt/internal/logger"
 
 	"github.com/docker/distribution/reference"
 	"github.com/pkg/errors"
@@ -30,36 +32,37 @@ type tiltfileState struct {
 	dcCli    dockercompose.DockerComposeClient
 
 	// modified during run
-	configFiles             []string
-	buildIndex              *buildIndex
-	k8s                     []*k8sResource
-	k8sByName               map[string]*k8sResource
-	k8sUnresourced          []k8s.K8sEntity
-	dc                      dcResourceSet // currently only support one d-c.yml
-	k8sImageJsonPathsByKind map[string][]string
-	k8sGroupByImage         bool
-	indent                  int
+	configFiles    []string
+	buildIndex     *buildIndex
+	k8s            []*k8sResource
+	k8sByName      map[string]*k8sResource
+	k8sUnresourced []k8s.K8sEntity
+	dc             dcResourceSet // currently only support one d-c.yml
+	// JSON paths to images in k8s YAML (other than fields named image and env vars)
+	k8sImageJSONPaths map[k8sObjectSelector][]k8s.JSONPath
+	k8sGroupByImage   bool
+	indent            int
 
 	// count how many times each builtin is called, for analytics
 	builtinCallCounts map[string]int
 
-	logger   *log.Logger
+	logger   logger.Logger
 	warnings []string
 }
 
-func newTiltfileState(ctx context.Context, filename string, tfRoot string, l *log.Logger) *tiltfileState {
+func newTiltfileState(ctx context.Context, dcCli dockercompose.DockerComposeClient, filename string) *tiltfileState {
 	lp := localPath{path: filename}
 	s := &tiltfileState{
-		ctx:                     ctx,
-		filename:                localPath{path: filename},
-		dcCli:                   dockercompose.NewDockerComposeClient(),
-		buildIndex:              newBuildIndex(),
-		k8sByName:               make(map[string]*k8sResource),
-		k8sImageJsonPathsByKind: make(map[string][]string),
-		k8sGroupByImage:         true,
-		configFiles:             []string{filename},
-		logger:                  l,
-		builtinCallCounts:       make(map[string]int),
+		ctx:               ctx,
+		filename:          localPath{path: filename},
+		dcCli:             dockercompose.NewDockerComposeClient(),
+		buildIndex:        newBuildIndex(),
+		k8sByName:         make(map[string]*k8sResource),
+		k8sGroupByImage:   true,
+		configFiles:       []string{filename},
+		logger:            l,
+		builtinCallCounts: make(map[string]int),
+		k8sImageJSONPaths: make(map[k8sObjectSelector][]k8s.JSONPath),
 	}
 	s.filename = s.maybeAttachGitRepo(lp, filepath.Dir(lp.path))
 	return s
@@ -68,7 +71,7 @@ func newTiltfileState(ctx context.Context, filename string, tfRoot string, l *lo
 func (s *tiltfileState) exec() error {
 	thread := &starlark.Thread{
 		Print: func(_ *starlark.Thread, msg string) {
-			s.logger.Printf("%s", msg)
+			s.logger.Infof("%s", msg)
 		},
 	}
 
@@ -89,11 +92,12 @@ const (
 	dcResourceN    = "dc_resource"
 
 	// k8s functions
-	k8sYamlN     = "k8s_yaml"
-	filterYamlN  = "filter_yaml"
-	k8sResourceN = "k8s_resource"
-	portForwardN = "port_forward"
-	k8sKindN     = "k8s_kind"
+	k8sYamlN          = "k8s_yaml"
+	filterYamlN       = "filter_yaml"
+	k8sResourceN      = "k8s_resource"
+	portForwardN      = "port_forward"
+	k8sKindN          = "k8s_kind"
+	k8sImageJSONPathN = "k8s_image_json_path"
 
 	// file functions
 	localGitRepoN = "local_git_repo"
@@ -102,6 +106,8 @@ const (
 	kustomizeN    = "kustomize"
 	helmN         = "helm"
 	listdirN      = "listdir"
+	decodeJSONN   = "decode_json"
+	readJSONN     = "read_json"
 
 	// other functions
 	failN = "fail"
@@ -136,6 +142,7 @@ func (s *tiltfileState) builtins() starlark.StringDict {
 	addBuiltin(k8sResourceN, s.k8sResource)
 	addBuiltin(portForwardN, s.portForward)
 	addBuiltin(k8sKindN, s.k8sKind)
+	addBuiltin(r, k8sImageJSONPathN, s.k8sImageJsonPath)
 	addBuiltin(localGitRepoN, s.localGitRepo)
 	addBuiltin(kustomizeN, s.kustomize)
 	addBuiltin(helmN, s.helm)
@@ -170,7 +177,7 @@ func (s *tiltfileState) assemble() (resourceSet, []k8s.K8sEntity, error) {
 
 	err = s.buildIndex.assertAllMatched()
 	if err != nil {
-		s.logger.Printf("WARNING: %s\n", err)
+		s.logger.Infof("WARNING: %s\n", err)
 		s.warnings = append(s.warnings, err.Error())
 	}
 
@@ -628,15 +635,10 @@ func (s *tiltfileState) imgTargetsForDependencyIDsHelper(ids []model.TargetID, c
 				Dockerfile: image.staticDockerfile.String(),
 				BuildPath:  string(image.staticBuildPath.path),
 				BuildArgs:  image.staticBuildArgs,
+				FastBuild:  s.maybeFastBuild(image),
 			})
 		case FastBuild:
-			iTarget = iTarget.WithBuildDetails(model.FastBuild{
-				BaseDockerfile: image.baseDockerfile.String(),
-				Mounts:         s.mountsToDomain(image),
-				Steps:          image.steps,
-				Entrypoint:     model.ToShellCmd(image.entrypoint),
-				HotReload:      image.hotReload,
-			})
+			iTarget = iTarget.WithBuildDetails(s.fastBuildForImage(image))
 		case CustomBuild:
 			r := model.CustomBuild{
 				Command: image.customCommand,
@@ -723,4 +725,57 @@ func (s *tiltfileState) exit() {
 
 func (s *tiltfileState) infof(fmt string, args ...interface{}) {
 	s.logger.Printf(strings.Repeat("  ", s.indent)+fmt, args...)
+}
+
+// A selector matches an entity if all non-empty selector fields match the corresponding entity fields
+type k8sObjectSelector struct {
+	apiVersion *regexp.Regexp
+	kind       *regexp.Regexp
+
+	name      *regexp.Regexp
+	namespace *regexp.Regexp
+}
+
+// Creates a new k8sObjectSelector
+// If an arg is an empty string, it will become an empty regex that matches all input
+func newK8SObjectSelector(apiVersion string, kind string, name string, namespace string) (k8sObjectSelector, error) {
+	ret := k8sObjectSelector{}
+	var err error
+
+	makeCaseInsensitive := func(s string) string {
+		if s == "" {
+			return s
+		} else {
+			return "(?i)" + s
+		}
+	}
+
+	ret.apiVersion, err = regexp.Compile(makeCaseInsensitive(apiVersion))
+	if err != nil {
+		return k8sObjectSelector{}, errors.Wrap(err, "error parsing apiVersion regexp")
+	}
+
+	ret.kind, err = regexp.Compile(makeCaseInsensitive(kind))
+	if err != nil {
+		return k8sObjectSelector{}, errors.Wrap(err, "error parsing kind regexp")
+	}
+
+	ret.name, err = regexp.Compile(makeCaseInsensitive(name))
+	if err != nil {
+		return k8sObjectSelector{}, errors.Wrap(err, "error parsing name regexp")
+	}
+
+	ret.namespace, err = regexp.Compile(makeCaseInsensitive(namespace))
+	if err != nil {
+		return k8sObjectSelector{}, errors.Wrap(err, "error parsing namespace regexp")
+	}
+
+	return ret, nil
+}
+
+func (k k8sObjectSelector) matches(e k8s.K8sEntity) bool {
+	return k.apiVersion.MatchString(e.Kind.GroupVersion().String()) &&
+		k.kind.MatchString(e.Kind.Kind) &&
+		k.name.MatchString(e.Name()) &&
+		k.namespace.MatchString(e.Namespace().String())
 }

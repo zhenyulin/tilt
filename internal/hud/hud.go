@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/windmilleng/tilt/internal/hud/view"
+	"github.com/windmilleng/tilt/internal/model"
 	"github.com/windmilleng/tilt/internal/store"
 )
 
@@ -31,7 +32,8 @@ type HeadsUpDisplay interface {
 }
 
 type Hud struct {
-	r *Renderer
+	r      *Renderer
+	webURL model.WebURL
 
 	currentView      view.View
 	currentViewState view.ViewState
@@ -41,9 +43,10 @@ type Hud struct {
 
 var _ HeadsUpDisplay = (*Hud)(nil)
 
-func NewDefaultHeadsUpDisplay(renderer *Renderer) (HeadsUpDisplay, error) {
+func NewDefaultHeadsUpDisplay(renderer *Renderer, webURL model.WebURL) (HeadsUpDisplay, error) {
 	return &Hud{
-		r: renderer,
+		r:      renderer,
+		webURL: webURL,
 	}, nil
 }
 
@@ -148,10 +151,19 @@ func (h *Hud) handleScreenEvent(ctx context.Context, dispatch func(action store.
 					}
 				}
 				h.currentViewState.CycleViewLogState()
+			case r == 'L':
+				if h.webURL.Empty() {
+					break
+				}
+				url := h.webURL
+				url.Path = "/log"
+				_ = browser.OpenURL(url.String())
 			case r == 'k':
 				h.activeScroller().Up()
+				h.refreshSelectedIndex()
 			case r == 'j':
 				h.activeScroller().Down()
+				h.refreshSelectedIndex()
 			case r == 'q': // [Q]uit
 				escape()
 			case r == 'R': // hidden key for recovering from printf junk during demos
@@ -161,31 +173,51 @@ func (h *Hud) handleScreenEvent(ctx context.Context, dispatch func(action store.
 				dispatch(view.AppendToTriggerQueueAction{
 					Name: selected.Name,
 				})
+			case r == '1':
+				h.currentViewState.TabState = view.TabAllLog
+			case r == '2':
+				h.currentViewState.TabState = view.TabBuildLog
+			case r == '3':
+				h.currentViewState.TabState = view.TabPodLog
 			}
 		case tcell.KeyUp:
 			h.activeScroller().Up()
+			h.refreshSelectedIndex()
 		case tcell.KeyDown:
 			h.activeScroller().Down()
+			h.refreshSelectedIndex()
 		case tcell.KeyPgUp:
 			for i := 0; i < pgUpDownCount; i++ {
 				h.activeScroller().Up()
 			}
+			h.refreshSelectedIndex()
 		case tcell.KeyPgDn:
 			for i := 0; i < pgUpDownCount; i++ {
 				h.activeScroller().Down()
 			}
-		case tcell.KeyEnter: // toggle log modal for selected resource
+			h.refreshSelectedIndex()
+		case tcell.KeyEnter, tcell.KeyTab: // toggle log modal for selected resource
+			if len(h.currentView.Resources) == 0 {
+				break
+			}
+			selectedIdx, r := h.selectedResource()
+			if r.IsYAML() {
+				h.currentViewState.AlertMessage = fmt.Sprintf("YAML Resources don't have logs")
+				break
+			}
+
+			if ev.Key() == tcell.KeyTab {
+				if h.webURL.Empty() {
+					break
+				}
+				url := h.webURL
+				url.Path = fmt.Sprintf("/r/%s/log", r.Name)
+				_ = browser.OpenURL(url.String())
+				break
+			}
+
 			am := h.activeModal()
 			if am == nil {
-				if len(h.currentView.Resources) == 0 {
-					break
-				}
-				selectedIdx, r := h.selectedResource()
-				if r.IsYAML() {
-					h.currentViewState.AlertMessage = fmt.Sprintf("YAML Resources don't have logs")
-					break
-				}
-
 				h.currentViewState.LogModal = view.LogModal{ResourceLogNumber: selectedIdx + 1}
 				h.activeModal().Bottom()
 			} else {
@@ -214,6 +246,8 @@ func (h *Hud) handleScreenEvent(ctx context.Context, dispatch func(action store.
 			} else {
 				dispatch(StartProfilingAction{})
 			}
+		case tcell.KeyCtrlT:
+			dispatch(SetLogTimestampsAction{!h.currentView.LogTimestamps})
 		}
 
 	case *tcell.EventResize:
@@ -250,7 +284,13 @@ func (h *Hud) Refresh(ctx context.Context) error {
 
 // Must hold the lock
 func (h *Hud) setView(ctx context.Context, view view.View) error {
+	// if we're going from 1 resource (i.e., the Tiltfile) to more than 1, reset
+	// the resource selection, so that we're not scrolled to the bottom with the Tiltfile selected
+	if len(h.currentView.Resources) == 1 && len(view.Resources) > 1 {
+		h.resetResourceSelection()
+	}
 	h.currentView = view
+	h.refreshSelectedIndex()
 
 	// if the hud isn't running, make sure new logs are visible on stdout
 	if !h.isRunning && h.currentViewState.ProcessedLogByteCount < len(view.Log) {
@@ -286,12 +326,40 @@ func (h *Hud) Update(v view.View, vs view.ViewState) error {
 	return errors.Wrap(err, "error rendering hud")
 }
 
+func (h *Hud) resetResourceSelection() {
+	rty := h.r.rty
+	if rty == nil {
+		return
+	}
+	// wipe out any scroll/selection state for resources
+	// it will get re-set in the next call to render
+	rty.RegisterElementScroll("resources", []string{})
+}
+
+func (h *Hud) refreshSelectedIndex() {
+	rty := h.r.rty
+	if rty == nil {
+		return
+	}
+	scroller := rty.ElementScroller("resources")
+	if scroller == nil {
+		return
+	}
+	i := scroller.GetSelectedIndex()
+	h.currentViewState.SelectedIndex = i
+}
+
 func (h *Hud) selectedResource() (i int, resource view.Resource) {
-	i = h.r.rty.ElementScroller("resources").GetSelectedIndex()
-	if i >= 0 && i < len(h.currentView.Resources) {
-		resource = h.currentView.Resources[i]
+	return selectedResource(h.currentView, h.currentViewState)
+}
+
+func selectedResource(view view.View, state view.ViewState) (i int, resource view.Resource) {
+	i = state.SelectedIndex
+	if i >= 0 && i < len(view.Resources) {
+		resource = view.Resources[i]
 	}
 	return i, resource
+
 }
 
 var _ store.Subscriber = &Hud{}

@@ -1,0 +1,17 @@
+.status {
+    height: 5vh;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-left: 1em;
+    padding-right: 1em;
+    border-top: 1px dotted #fff;
+}
+
+.status section + section {
+    margin-left: 2em;
+}
+
+.status button {
+    margin-left: 2em;
+}

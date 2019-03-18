@@ -3,14 +3,20 @@ package model
 import (
 	"flag"
 	"fmt"
+	"net/url"
 
 	"github.com/spf13/pflag"
 )
+
+// Web version of the form vA.B.C, where A, B, and C are integers.
+// Used for fetching web assets
+type WebVersion string
 
 // Mode for developing Tilt web UX.
 //
 // Currently controls whether we use production asset bundles (JS/CSS)
 // or local hot-reloaded asset bundles.
+
 type WebMode string
 
 const (
@@ -41,3 +47,15 @@ func (m *WebMode) Type() string {
 var emptyWebMode = WebMode("")
 var _ flag.Value = &emptyWebMode
 var _ pflag.Value = &emptyWebMode
+
+type WebPort int
+type WebURL url.URL
+
+func (u WebURL) String() string {
+	url := (*url.URL)(&u)
+	return url.String()
+}
+
+func (u WebURL) Empty() bool {
+	return WebURL{} == u
+}

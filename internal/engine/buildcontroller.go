@@ -34,6 +34,12 @@ func NewBuildController(b BuildAndDeployer) *BuildController {
 
 // Algorithm to choose a manifest to build next.
 func nextTargetToBuild(state store.EngineState) *store.ManifestTarget {
+	// Don't build anything if there are pending config file changes.
+	// We want the Tiltfile to re-run first.
+	if len(state.PendingConfigFileChanges) > 0 {
+		return nil
+	}
+
 	// put no-build manifests first since they're more likely to be
 	// 1. fast and 2. dependencies of other services (e.g., redis)
 	targets := append([]*store.ManifestTarget{}, state.Targets()...)
@@ -220,9 +226,9 @@ func (c *BuildController) logBuildEntry(ctx context.Context, entry buildEntry, c
 
 	l := logger.Get(ctx)
 	if firstBuild {
-		p := logger.Blue(l).Sprintf("\n──┤ Building: ")
+		p := logger.Blue(l).Sprintf("──┤ Building: ")
 		s := logger.Blue(l).Sprintf(" ├──────────────────────────────────────────────")
-		l.Infof("%s%s%s", p, name, s)
+		l.Infof("\n%s%s%s", p, name, s)
 	} else {
 		var changedPathsToPrint []string
 		if len(changedFiles) > maxChangedFilesToPrint {
@@ -233,13 +239,13 @@ func (c *BuildController) logBuildEntry(ctx context.Context, entry buildEntry, c
 		}
 
 		if len(changedFiles) > 0 {
-			p := logger.Green(l).Sprintf("\n%d changed: ", len(changedFiles))
-			l.Infof("%s%v\n", p, ospath.TryAsCwdChildren(changedPathsToPrint))
+			p := logger.Green(l).Sprintf("%d changed: ", len(changedFiles))
+			l.Infof("\n%s%v\n", p, ospath.TryAsCwdChildren(changedPathsToPrint))
 		}
 
-		rp := logger.Blue(l).Sprintf("\n──┤ Rebuilding: ")
+		rp := logger.Blue(l).Sprintf("──┤ Rebuilding: ")
 		rs := logger.Blue(l).Sprintf(" ├────────────────────────────────────────────")
-		l.Infof("%s%s%s", rp, name, rs)
+		l.Infof("\n%s%s%s", rp, name, rs)
 	}
 }
 
@@ -251,7 +257,7 @@ type BuildLogActionWriter struct {
 func (w BuildLogActionWriter) Write(p []byte) (n int, err error) {
 	w.store.Dispatch(BuildLogAction{
 		ManifestName: w.manifestName,
-		Log:          append([]byte{}, p...),
+		logEvent:     newLogEvent(append([]byte{}, p...)),
 	})
 	return len(p), nil
 }
@@ -292,20 +298,25 @@ func buildStateSet(manifest model.Manifest, specs []model.TargetSpec, ms *store.
 
 		buildState := store.NewBuildState(status.LastSuccessfulResult, filesChanged)
 
-		// Kubernetes-based builds can update containers in-place.
+		// Pass along the container when we can update containers in-place.
 		//
-		// We don't want to pass along the kubernetes data if the pod is crashing,
-		// because we're not confident that this state is accurate (due to how k8s
-		// reschedules pods).
+		// We don't want to pass along the data if the pod is crashing, because
+		// we're not confident that this state is accurate, due to how orchestrators
+		// (like k8s) reschedule containers (i.e., they reset to the original image
+		// rather than persisting the container filesystem.)
 		//
 		// This will probably need to change as the mapping between containers and
 		// manifests becomes many-to-one.
-		//
-		// TODO(nick): Attach deploy info for docker compose
-		if manifest.IsK8s() && !ms.NeedsRebuildFromCrash {
+		if !ms.NeedsRebuildFromCrash {
 			iTarget, ok := spec.(model.ImageTarget)
 			if ok {
-				buildState = buildState.WithDeployTarget(store.NewDeployInfo(iTarget, ms.PodSet))
+				if manifest.IsK8s() {
+					buildState = buildState.WithDeployTarget(store.NewDeployInfo(iTarget, ms.PodSet))
+				}
+
+				if manifest.IsDC() {
+					buildState = buildState.WithDeployTarget(store.NewDeployInfoFromDC(ms.DCResourceState()))
+				}
 			}
 		}
 		buildStateSet[id] = buildState
