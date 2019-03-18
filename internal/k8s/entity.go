@@ -300,10 +300,6 @@ func MatchesPodTemplateSpecPredicate(withPodSpec K8sEntity) Predicate {
 	return Any(ps)
 }
 
-func FilterByImage(entities []K8sEntity, img container.RefSelector, k8sImageJsonPathsByKind map[string][]string) (passing, rest []K8sEntity, err error) {
-	return Filter(entities, ImagePredicate(img, k8sImageJsonPathsByKind))
-}
-
 func FilterBySelectorMatchesLabels(entities []K8sEntity, labels map[string]string) (passing, rest []K8sEntity, err error) {
 	return Filter(entities, SelectorMatchesLabelsPredicate(labels))
 }

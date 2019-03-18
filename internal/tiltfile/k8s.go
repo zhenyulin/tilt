@@ -648,13 +648,11 @@ func (s *tiltfileState) portForwardsToDomain(r *k8sResource) []model.PortForward
 
 // returns any defined image JSON paths that apply to the given entity
 func (s *tiltfileState) imageJSONPaths(e k8s.K8sEntity) []k8s.JSONPath {
-	var ret []k8s.JSONPath
+	var r []k8s.JSONPath
 
-	for k, v := range s.k8sImageJSONPaths {
-		if !k.matches(e) {
-			continue
-		}
-		ret = append(ret, v...)
+	for _, ex := range s.k8sImageExtractors {
+		paths := ex(e)
+		r = append(r, ex(e)...)
 	}
 
 	return ret

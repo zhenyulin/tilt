@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"regexp"
-	"strings"
 
 	"github.com/windmilleng/tilt/internal/logger"
 
@@ -39,9 +37,10 @@ type tiltfileState struct {
 	k8sUnresourced []k8s.K8sEntity
 	dc             dcResourceSet // currently only support one d-c.yml
 	// JSON paths to images in k8s YAML (other than fields named image and env vars)
-	k8sImageJSONPaths map[k8sObjectSelector][]k8s.JSONPath
-	k8sGroupByImage   bool
-	indent            int
+	// An ImageExtractor is a func that given an entity returns []Image
+	k8sImageExtractors []ImageExtractor
+	k8sGroupByImage    bool
+	indent             int
 
 	// count how many times each builtin is called, for analytics
 	builtinCallCounts map[string]int
@@ -293,7 +292,7 @@ func (s *tiltfileState) assembleWorkload(e k8s.K8sEntity) error {
 }
 
 func (s *tiltfileState) findDestinationResource(e k8s.K8sEntity) (*k8sResource, error) {
-	images, err := e.FindImages(s.k8sImageJsonPathsByKind)
+	images, err := e.FindImages(s.imageJSONPaths(e))
 	if err != nil {
 		return nil, err
 	}
