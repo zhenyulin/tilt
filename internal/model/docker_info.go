@@ -227,6 +227,10 @@ type FastBuild struct {
 	// A HotReload container image knows how to automatically
 	// reload any changes in the container. No need to restart it.
 	HotReload bool
+
+	// List of files that, on change, trigger an image build (i.e.
+	// they cannot be container-built).
+	FullBuildOn []string
 }
 
 func (FastBuild) buildDetails()  {}

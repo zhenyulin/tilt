@@ -24,6 +24,7 @@ type dockerImage struct {
 	entrypoint         string
 	cachePaths         []string
 	hotReload          bool
+	fullBuildOn        []string
 
 	staticDockerfilePath localPath
 	staticDockerfile     dockerfile.Dockerfile
@@ -173,6 +174,7 @@ func (s *tiltfileState) fastBuildForImage(image *dockerImage) model.FastBuild {
 		Steps:          image.steps,
 		Entrypoint:     model.ToShellCmd(image.entrypoint),
 		HotReload:      image.hotReload,
+		FullBuildOn:    image.fullBuildOn,
 	}
 }
 func (s *tiltfileState) maybeFastBuild(image *dockerImage) *model.FastBuild {
@@ -381,9 +383,10 @@ func (b *fastBuild) Hash() (uint32, error) {
 }
 
 const (
-	addN       = "add"
-	runN       = "run"
-	hotReloadN = "hot_reload"
+	addN         = "add"
+	runN         = "run"
+	hotReloadN   = "hot_reload"
+	fullBuildOnN = "full_build_on"
 )
 
 func (b *fastBuild) Attr(name string) (starlark.Value, error) {
@@ -394,6 +397,8 @@ func (b *fastBuild) Attr(name string) (starlark.Value, error) {
 		return starlark.NewBuiltin(name, b.run), nil
 	case hotReloadN:
 		return starlark.NewBuiltin(name, b.hotReload), nil
+	case fullBuildOnN:
+		return starlark.NewBuiltin(name, b.fullBuildOn), nil
 	default:
 		return starlark.None, nil
 	}
@@ -466,6 +471,30 @@ func (b *fastBuild) run(thread *starlark.Thread, fn *starlark.Builtin, args star
 	step.Triggers = triggers
 
 	b.img.steps = append(b.img.steps, step)
+	return b, nil
+}
+
+func (b *fastBuild) fullBuildOn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var val starlark.Value
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+		"files", &val,
+	); err != nil {
+		return nil, err
+	}
+
+	files := starlarkValueOrSequenceToSlice(val)
+
+	var fullBuildOn []string
+	for _, v := range files {
+		str, ok := v.(starlark.String)
+		if !ok {
+			return nil, fmt.Errorf("'files' value %v is a %T; must be a string", v, v)
+		}
+		abs := b.s.absPath(string(str))
+		fullBuildOn = append(fullBuildOn, abs)
+	}
+
+	b.img.fullBuildOn = fullBuildOn
 	return b, nil
 }
 

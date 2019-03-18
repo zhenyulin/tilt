@@ -208,6 +208,47 @@ k8s_resource('foo', 'foo.yaml')
 	f.assertConfigFiles("Tiltfile", ".tiltignore", "foo/Dockerfile", "foo.yaml")
 }
 
+func TestFullBuildOnSingle(t *testing.T) {
+	f := newFixture(t)
+	defer f.TearDown()
+
+	f.setupFoo()
+	f.file("Tiltfile", `
+fast_build('gcr.io/foo', 'foo/Dockerfile') \
+  .add('foo', 'src/') \
+  .run("echo hi") \
+  .full_build_on('complicated.json')
+k8s_resource('foo', 'foo.yaml')
+`)
+	f.load()
+	f.assertNextManifest("foo",
+		fb(image("gcr.io/foo"), add("foo", "src/"), run("echo hi"), fullBuildOn(f, "complicated.json")),
+		deployment("foo"),
+	)
+	f.assertConfigFiles("Tiltfile", ".tiltignore", "foo/Dockerfile", "foo.yaml")
+}
+
+func TestFullBuildOnList(t *testing.T) {
+	f := newFixture(t)
+	defer f.TearDown()
+
+	f.setupFoo()
+	f.file("Tiltfile", `
+fast_build('gcr.io/foo', 'foo/Dockerfile') \
+  .add('foo', 'src/') \
+  .run("echo hi") \
+  .full_build_on(['complicated.json', 'more_configs.json'])
+k8s_resource('foo', 'foo.yaml')
+`)
+	f.load()
+	f.assertNextManifest("foo",
+		fb(image("gcr.io/foo"), add("foo", "src/"), run("echo hi"),
+			fullBuildOn(f, "complicated.json", "more_configs.json")),
+		deployment("foo"),
+	)
+	f.assertConfigFiles("Tiltfile", ".tiltignore", "foo/Dockerfile", "foo.yaml")
+}
+
 func TestFastBuildPassedToResource(t *testing.T) {
 	f := newFixture(t)
 	defer f.TearDown()
@@ -2934,6 +2975,8 @@ func (fb fbHelper) checkMatchers(f *fixture, m model.Manifest, fbInfo model.Fast
 			assert.Equal(f.t, matcher.triggers, step.Triggers)
 		case hotReloadHelper:
 			assert.Equal(f.t, matcher.on, fbInfo.HotReload)
+		case fullBuildOnHelper:
+			assert.ElementsMatch(f.t, matcher.files, fbInfo.FullBuildOn)
 		default:
 			f.t.Fatalf("unknown fbHelper matcher: %T %v", matcher, matcher)
 		}
@@ -2985,6 +3028,14 @@ type hotReloadHelper struct {
 
 func hotReload(on bool) hotReloadHelper {
 	return hotReloadHelper{on: on}
+}
+
+type fullBuildOnHelper struct {
+	files []string
+}
+
+func fullBuildOn(f *fixture, files ...string) fullBuildOnHelper {
+	return fullBuildOnHelper{files: f.JoinPaths(files)}
 }
 
 type cmdHelper struct {
