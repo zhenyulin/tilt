@@ -72,6 +72,10 @@ func NewSanchoFastBuildManifestWithCache(fixture pather, paths []string) model.M
 }
 
 func NewSanchoCustomBuildManifest(fixture pather) model.Manifest {
+	return NewSanchoCustomBuildManifestWithRef(fixture, SanchoRef)
+
+}
+func NewSanchoCustomBuildManifestWithRef(fixture pather, ref container.RefSelector) model.Manifest {
 	cb := model.CustomBuild{
 		Command: "true",
 		Deps:    []string{fixture.JoinPath("app")},
@@ -82,7 +86,7 @@ func NewSanchoCustomBuildManifest(fixture pather) model.Manifest {
 	return assembleK8sManifest(
 		m,
 		model.K8sTarget{YAML: SanchoYAML},
-		model.ImageTarget{Ref: SanchoRef}.WithBuildDetails(cb))
+		model.ImageTarget{Ref: ref}.WithBuildDetails(cb))
 }
 
 func NewSanchoCustomBuildManifestWithFastBuild(fixture pather) model.Manifest {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/docker/distribution/reference"
 	"github.com/opencontainers/go-digest"
 
@@ -32,7 +33,13 @@ func NewExecCustomBuilder(dCli docker.Client, env docker.Env, clock Clock) *Exec
 }
 
 func (b *ExecCustomBuilder) Build(ctx context.Context, ref reference.Named, command string) (reference.NamedTagged, error) {
+	spew.Dump(ref.String())
+	nt, ok := ref.(reference.NamedTagged)
+	if ok {
+		fmt.Println("it's tagged!", nt.String())
+	}
 	tmpTag := fmt.Sprintf("tilt-build-%d", b.clock.Now().Unix())
+	fmt.Println("👋")
 	result, err := reference.WithTag(ref, tmpTag)
 	if err != nil {
 		return nil, err

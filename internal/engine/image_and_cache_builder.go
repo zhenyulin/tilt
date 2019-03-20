@@ -95,7 +95,7 @@ func (icb *imageAndCacheBuilder) Build(ctx context.Context, iTarget model.ImageT
 	case model.CustomBuild:
 		ps.StartPipelineStep(ctx, "Building Dockerfile: [%s]", ref)
 		defer ps.EndPipelineStep(ctx)
-		ref, err := icb.custb.Build(ctx, ref.AsNamedOnly(), bd.Command)
+		ref, err := icb.custb.Build(ctx, ref.Ref, bd.Command)
 		if err != nil {
 			return nil, err
 		}

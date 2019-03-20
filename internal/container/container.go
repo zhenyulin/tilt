@@ -33,7 +33,7 @@ func ParseNamedTagged(s string) (reference.NamedTagged, error) {
 
 	nt, ok := ref.(reference.NamedTagged)
 	if !ok {
-		return nil, fmt.Errorf("could not parse ref %s as NamedTagged", ref)
+		return nil, fmt.Errorf("could not parse Ref %s as NamedTagged", ref)
 	}
 	return nt, nil
 }
