@@ -63,6 +63,9 @@ func newFixture(t *testing.T, dir string) *fixture {
 
 func (f *fixture) installTilt() {
 	cmd := exec.CommandContext(f.ctx, "go", "install", "github.com/windmilleng/tilt/cmd/tilt")
+	cmd.Env = append(os.Environ(),
+		"GOBIN=/tmp/tilt_integration",
+	)
 	err := cmd.Run()
 	if err != nil {
 		f.t.Fatalf("Building tilt: %v", err)
@@ -94,7 +97,7 @@ func (f *fixture) WaitUntil(ctx context.Context, msg string, fun func() (string,
 
 func (f *fixture) tiltCmd(tiltArgs []string, outWriter io.Writer) *exec.Cmd {
 	outWriter = io.MultiWriter(f.logs, outWriter)
-	cmd := exec.CommandContext(f.ctx, "tilt", tiltArgs...)
+	cmd := exec.CommandContext(f.ctx, "/tmp/tilt_integration/tilt", tiltArgs...)
 	cmd.Stdout = outWriter
 	cmd.Stderr = outWriter
 	cmd.Env = append(os.Environ(), "TILT_DISABLE_ANALYTICS=true")
