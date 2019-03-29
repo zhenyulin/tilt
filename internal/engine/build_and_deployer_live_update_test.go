@@ -231,7 +231,7 @@ func TestLiveUpdateDockerBuildDeploysSynclet(t *testing.T) {
 	runTestCase(t, f, tCase)
 }
 
-func _TestLiveUpdateLocalContainerFullBuildTrigger(t *testing.T) {
+func TestLiveUpdateLocalContainerFullBuildTrigger(t *testing.T) {
 	f := newBDFixture(t, k8s.EnvDockerDesktop)
 	defer f.TearDown()
 

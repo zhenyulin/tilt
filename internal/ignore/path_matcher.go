@@ -2,6 +2,7 @@ package ignore
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -122,17 +123,20 @@ func CreateTriggerMatcher(triggers []string, baseDir string) (model.PathMatcher,
 
 // MatchesAnyPaths returns true if any of the given patterns match any of the given filepaths.
 func MatchesAnyPaths(patterns, paths []string, baseDir string) (bool, error) {
+	fmt.Printf("do any of paths %v match any patterns %v?? (basedir = %s)\n", paths, patterns, baseDir)
 	matcher, err := CreateTriggerMatcher(patterns, baseDir)
 	if err != nil {
 		return false, err
 	}
 
 	for _, path := range paths {
+		fmt.Printf("checking path %s\n", path)
 		match, err := matcher.Matches(path, false)
 		if err != nil {
 			return false, err
 		}
 		if match {
+			fmt.Println("~~ yes, a match!")
 			return true, nil
 		}
 	}
