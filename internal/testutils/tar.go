@@ -3,6 +3,7 @@ package testutils
 import (
 	"archive/tar"
 	"bytes"
+	"fmt"
 	"io"
 	"testing"
 )
@@ -48,6 +49,7 @@ func AssertFilesInTar(t testing.TB, tr *tar.Reader, expectedFiles []ExpectedFile
 		} else if err != nil {
 			t.Fatalf("Error reading tar file: %v", err)
 		}
+		fmt.Println(header.Name)
 
 		if dupes[header.Name] {
 			t.Fatalf("File in tarball twice. This is invalid and will break when extracted: %v", header.Name)

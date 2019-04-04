@@ -167,6 +167,8 @@ func (a *ArchiveBuilder) entriesForPath(ctx context.Context, source, dest string
 
 		if strings.HasSuffix(dest, string(filepath.Separator)) {
 			header.Name = filepath.Join(dest, filepath.Base(source))
+		} else {
+			header.Name = dest
 		}
 
 		header.Name = filepath.Clean(header.Name)
