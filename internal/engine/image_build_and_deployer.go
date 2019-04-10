@@ -86,7 +86,7 @@ func (ibd *ImageBuildAndDeployer) SetInjectSynclet(inject bool) {
 	ibd.injectSynclet = inject
 }
 
-func (ibd *ImageBuildAndDeployer) BuildAndDeploy(ctx context.Context, st store.RStore, specs []model.TargetSpec, stateSet store.BuildStateSet) (resultSet store.BuildResultSet, err error) {
+func (ibd *ImageBuildAndDeployer) BuildAndDeploy(ctx context.Context, st store.RStore, specs []model.TargetSpec, entry buildEntry) (resultSet store.BuildResultSet, err error) {
 	iTargets, kTargets := extractImageAndK8sTargets(specs)
 	if len(kTargets) == 0 && len(iTargets) == 0 {
 		return store.BuildResultSet{}, SilentRedirectToNextBuilderf("ImageBuildAndDeployer does not support these specs")
@@ -99,7 +99,7 @@ func (ibd *ImageBuildAndDeployer) BuildAndDeploy(ctx context.Context, st store.R
 	startTime := time.Now()
 	defer func() {
 		incremental := "0"
-		for _, state := range stateSet {
+		for _, state := range entry.buildStateSet {
 			if state.HasImage() {
 				incremental = "1"
 			}
@@ -108,7 +108,7 @@ func (ibd *ImageBuildAndDeployer) BuildAndDeploy(ctx context.Context, st store.R
 		ibd.analytics.Timer("build.image", time.Since(startTime), tags)
 	}()
 
-	q, err := NewImageTargetQueue(iTargets, stateSet)
+	q, err := NewImageTargetQueue(iTargets, entry.buildStateSet)
 	if err != nil {
 		return store.BuildResultSet{}, err
 	}

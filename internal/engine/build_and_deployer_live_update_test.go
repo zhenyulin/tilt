@@ -58,7 +58,7 @@ func runTestCase(t *testing.T, f *bdFixture, tCase testCase) {
 	manifest = manifest.WithImageTarget(iTarg.WithBuildDetails(db))
 	targets := buildTargets(manifest)
 
-	result, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, bs)
+	result, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, entryWithState(bs))
 	if err != nil {
 		t.Fatal(err)
 	}

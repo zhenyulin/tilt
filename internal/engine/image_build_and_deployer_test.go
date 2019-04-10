@@ -35,7 +35,7 @@ func TestDockerBuildWithCache(t *testing.T) {
 	cache := "gcr.io/some-project-162817/sancho:tilt-cache-3de427a264f80719a58a9abd456487b3"
 	f.docker.Images[cache] = types.ImageInspect{}
 
-	_, err := f.ibd.BuildAndDeploy(f.ctx, f.st, buildTargets(manifest), store.BuildStateSet{})
+	_, err := f.ibd.BuildAndDeploy(f.ctx, f.st, buildTargets(manifest), entryWithEmptyState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestBaseDockerfileWithCache(t *testing.T) {
 	cache := "gcr.io/some-project-162817/sancho:tilt-cache-3de427a264f80719a58a9abd456487b3"
 	f.docker.Images[cache] = types.ImageInspect{}
 
-	_, err := f.ibd.BuildAndDeploy(f.ctx, f.st, buildTargets(manifest), store.BuildStateSet{})
+	_, err := f.ibd.BuildAndDeploy(f.ctx, f.st, buildTargets(manifest), entryWithEmptyState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestDeployTwinImages(t *testing.T) {
 
 	sancho := NewSanchoFastBuildManifest(f)
 	manifest := sancho.WithDeployTarget(sancho.K8sTarget().AppendYAML(SanchoTwinYAML))
-	result, err := f.ibd.BuildAndDeploy(f.ctx, f.st, buildTargets(manifest), store.BuildStateSet{})
+	result, err := f.ibd.BuildAndDeploy(f.ctx, f.st, buildTargets(manifest), entryWithEmptyState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestDeployPodWithMultipleImages(t *testing.T) {
 		WithDependencyIDs([]model.TargetID{iTarget1.ID(), iTarget2.ID()})
 	targets := []model.TargetSpec{iTarget1, iTarget2, kTarget}
 
-	result, err := f.ibd.BuildAndDeploy(f.ctx, f.st, targets, store.BuildStateSet{})
+	result, err := f.ibd.BuildAndDeploy(f.ctx, f.st, targets, entryWithEmptyState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func TestDeployIDInjectedAndSent(t *testing.T) {
 
 	manifest := NewSanchoDockerBuildManifest()
 
-	_, err := f.ibd.BuildAndDeploy(f.ctx, f.st, buildTargets(manifest), store.BuildStateSet{})
+	_, err := f.ibd.BuildAndDeploy(f.ctx, f.st, buildTargets(manifest), entryWithEmptyState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func TestNoImageTargets(t *testing.T) {
 		},
 	}
 
-	_, err := f.ibd.BuildAndDeploy(f.ctx, f.st, specs, store.BuildStateSet{})
+	_, err := f.ibd.BuildAndDeploy(f.ctx, f.st, specs, entryWithEmptyState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +181,7 @@ func TestMultiStageDockerBuild(t *testing.T) {
 	defer f.TearDown()
 
 	manifest := NewSanchoDockerBuildMultiStageManifest(f)
-	_, err := f.ibd.BuildAndDeploy(f.ctx, f.st, buildTargets(manifest), store.BuildStateSet{})
+	_, err := f.ibd.BuildAndDeploy(f.ctx, f.st, buildTargets(manifest), entryWithEmptyState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func TestMultiStageDockerBuildWithFirstImageDirty(t *testing.T) {
 		iTargetID1: store.NewBuildState(result1, []string{newFile}),
 		iTargetID2: store.NewBuildState(result2, nil),
 	}
-	_, err := f.ibd.BuildAndDeploy(f.ctx, f.st, buildTargets(manifest), stateSet)
+	_, err := f.ibd.BuildAndDeploy(f.ctx, f.st, buildTargets(manifest), entryWithState(stateSet))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +254,7 @@ func TestMultiStageDockerBuildWithSecondImageDirty(t *testing.T) {
 		iTargetID1: store.NewBuildState(result1, nil),
 		iTargetID2: store.NewBuildState(result2, []string{newFile}),
 	}
-	_, err := f.ibd.BuildAndDeploy(f.ctx, f.st, buildTargets(manifest), stateSet)
+	_, err := f.ibd.BuildAndDeploy(f.ctx, f.st, buildTargets(manifest), entryWithState(stateSet))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +278,7 @@ func TestMultiStageFastBuild(t *testing.T) {
 	defer f.TearDown()
 
 	manifest := NewSanchoFastMultiStageManifest(f)
-	_, err := f.ibd.BuildAndDeploy(f.ctx, f.st, buildTargets(manifest), store.BuildStateSet{})
+	_, err := f.ibd.BuildAndDeploy(f.ctx, f.st, buildTargets(manifest), entryWithEmptyState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,7 +300,7 @@ func TestKINDPush(t *testing.T) {
 	defer f.TearDown()
 
 	manifest := NewSanchoDockerBuildManifest()
-	_, err := f.ibd.BuildAndDeploy(f.ctx, f.st, buildTargets(manifest), store.BuildStateSet{})
+	_, err := f.ibd.BuildAndDeploy(f.ctx, f.st, buildTargets(manifest), entryWithEmptyState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -317,7 +317,7 @@ func TestCustomBuildDisablePush(t *testing.T) {
 	f.docker.Images["gcr.io/some-project-162817/sancho:tilt-build"] = types.ImageInspect{ID: string(sha)}
 
 	manifest := NewSanchoCustomBuildManifestWithPushDisabled(f)
-	_, err := f.ibd.BuildAndDeploy(f.ctx, f.st, buildTargets(manifest), store.BuildStateSet{})
+	_, err := f.ibd.BuildAndDeploy(f.ctx, f.st, buildTargets(manifest), entryWithEmptyState())
 	assert.NoError(t, err)
 
 	// but we also didn't try to build or push an image
@@ -358,7 +358,7 @@ func TestDeployUsesInjectRef(t *testing.T) {
 				}
 			}
 
-			result, err := f.ibd.BuildAndDeploy(f.ctx, f.st, buildTargets(manifest), store.BuildStateSet{})
+			result, err := f.ibd.BuildAndDeploy(f.ctx, f.st, buildTargets(manifest), entryWithEmptyState())
 			if err != nil {
 				t.Fatal(err)
 			}

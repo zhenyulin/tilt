@@ -35,7 +35,7 @@ func TestDockerComposeTargetBuilt(t *testing.T) {
 	f := newDCBDFixture(t)
 	defer f.TearDown()
 
-	res, err := f.dcbad.BuildAndDeploy(f.ctx, f.st, []model.TargetSpec{dcTarg}, store.BuildStateSet{})
+	res, err := f.dcbad.BuildAndDeploy(f.ctx, f.st, []model.TargetSpec{dcTarg}, entryWithEmptyState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestTiltBuildsImage(t *testing.T) {
 	f := newDCBDFixture(t)
 	defer f.TearDown()
 
-	res, err := f.dcbad.BuildAndDeploy(f.ctx, f.st, []model.TargetSpec{imgTarg, dcTarg}, store.BuildStateSet{})
+	res, err := f.dcbad.BuildAndDeploy(f.ctx, f.st, []model.TargetSpec{imgTarg, dcTarg}, entryWithEmptyState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestTiltBuildsImageWithTag(t *testing.T) {
 	iTarget := model.NewImageTarget(container.MustParseSelector(refWithTag)).
 		WithBuildDetails(model.DockerBuild{})
 
-	_, err := f.dcbad.BuildAndDeploy(f.ctx, f.st, []model.TargetSpec{iTarget, dcTarg}, store.BuildStateSet{})
+	_, err := f.dcbad.BuildAndDeploy(f.ctx, f.st, []model.TargetSpec{iTarget, dcTarg}, entryWithEmptyState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,8 +105,7 @@ func TestMultiStageDockerCompose(t *testing.T) {
 
 	manifest := NewSanchoDockerBuildMultiStageManifest(f).
 		WithDeployTarget(dcTarg)
-	stateSet := store.BuildStateSet{}
-	_, err := f.dcbad.BuildAndDeploy(f.ctx, f.st, buildTargets(manifest), stateSet)
+	_, err := f.dcbad.BuildAndDeploy(f.ctx, f.st, buildTargets(manifest), entryWithEmptyState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +135,7 @@ func TestMultiStageDockerComposeWithOnlyOneDirtyImage(t *testing.T) {
 	result := store.NewImageBuildResult(iTargetID, container.MustParseNamedTagged("sancho-base:tilt-prebuilt"))
 	state := store.NewBuildState(result, nil)
 	stateSet := store.BuildStateSet{iTargetID: state}
-	_, err := f.dcbad.BuildAndDeploy(f.ctx, f.st, buildTargets(manifest), stateSet)
+	_, err := f.dcbad.BuildAndDeploy(f.ctx, f.st, buildTargets(manifest), entryWithState(stateSet))
 	if err != nil {
 		t.Fatal(err)
 	}

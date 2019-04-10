@@ -34,8 +34,8 @@ func NewSyncletBuildAndDeployer(sm SyncletManager, kCli k8s.Client, updateMode U
 	}
 }
 
-func (sbd *SyncletBuildAndDeployer) BuildAndDeploy(ctx context.Context, st store.RStore, specs []model.TargetSpec, stateSet store.BuildStateSet) (store.BuildResultSet, error) {
-	iTargets, err := extractImageTargetsForLiveUpdates(specs, stateSet)
+func (sbd *SyncletBuildAndDeployer) BuildAndDeploy(ctx context.Context, st store.RStore, specs []model.TargetSpec, entry buildEntry) (store.BuildResultSet, error) {
+	iTargets, err := extractImageTargetsForLiveUpdates(specs, entry.buildStateSet)
 	if err != nil {
 		return store.BuildResultSet{}, err
 	}
@@ -53,7 +53,12 @@ func (sbd *SyncletBuildAndDeployer) BuildAndDeploy(ctx context.Context, st store
 	span.SetTag("target", iTarget.ConfigurationRef.String())
 	defer span.Finish()
 
-	state := stateSet[iTarget.ID()]
+	state := entry.buildStateSet[iTarget.ID()]
+	// SyncletBuildAndDeployer doesn't support initial build
+	if state.IsEmpty() {
+		return store.BuildResultSet{}, SilentRedirectToNextBuilderf("prev. build state is empty; container build does not support initial deploy")
+	}
+
 	return sbd.UpdateInCluster(ctx, iTarget, state)
 }
 
@@ -78,7 +83,7 @@ func (sbd *SyncletBuildAndDeployer) UpdateInCluster(ctx context.Context,
 			if pmErr, ok := err.(*build.PathMappingErr); ok {
 				// expected error for this builder. One of more files don't match sync's;
 				// i.e. they're within the docker context but not within a sync; do a full image build.
-				return nil, SilentRedirectToNextBuilderf(
+				return nil, RedirectToNextBuilderInfof(
 					"at least one file (%s) doesn't match a LiveUpdate sync, so performing a full build", pmErr.File)
 			}
 			return store.BuildResultSet{}, err

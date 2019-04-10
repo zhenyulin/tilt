@@ -48,7 +48,7 @@ func TestGKEDeploy(t *testing.T) {
 
 	manifest := NewSanchoFastBuildManifest(f)
 	targets := buildTargets(manifest)
-	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, store.BuildStateSet{})
+	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, entryWithEmptyState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestDockerForMacDeploy(t *testing.T) {
 
 	manifest := NewSanchoFastBuildManifest(f)
 	targets := buildTargets(manifest)
-	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, store.BuildStateSet{})
+	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, entryWithEmptyState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestNamespaceGKE(t *testing.T) {
 
 	manifest := NewSanchoFastBuildManifest(f)
 	targets := buildTargets(manifest)
-	result, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, store.BuildStateSet{})
+	result, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, entryWithEmptyState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestNamespaceGKE(t *testing.T) {
 
 	changed := f.WriteFile("a.txt", "a")
 	bs := resultToStateSet(result, []string{changed}, deployInfo)
-	result, err = f.bd.BuildAndDeploy(f.ctx, f.st, buildTargets(manifest), bs)
+	result, err = f.bd.BuildAndDeploy(f.ctx, f.st, buildTargets(manifest), entryWithState(bs))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestContainerBuildLocal(t *testing.T) {
 	manifest := NewSanchoFastBuildManifest(f)
 	targets := buildTargets(manifest)
 	bs := resultToStateSet(alreadyBuiltSet, []string{changed}, f.deployInfo())
-	result, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, bs)
+	result, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, entryWithState(bs))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func TestContainerBuildSynclet(t *testing.T) {
 	bs := resultToStateSet(alreadyBuiltSet, []string{changed}, f.deployInfo())
 	manifest := NewSanchoFastBuildManifest(f)
 	targets := buildTargets(manifest)
-	result, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, bs)
+	result, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, entryWithState(bs))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +206,7 @@ func TestContainerBuildLocalTriggeredRuns(t *testing.T) {
 
 	targets := buildTargets(manifest)
 	bs := resultToStateSet(alreadyBuiltSet, []string{changed}, f.deployInfo())
-	result, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, bs)
+	result, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, entryWithState(bs))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +250,7 @@ func TestContainerBuildSyncletTriggeredRuns(t *testing.T) {
 
 	targets := buildTargets(manifest)
 	bs := resultToStateSet(alreadyBuiltSet, []string{changed}, f.deployInfo())
-	result, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, bs)
+	result, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, entryWithState(bs))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +284,7 @@ func TestContainerBuildSyncletHotReload(t *testing.T) {
 	fbInfo.HotReload = true
 	manifest = manifest.WithImageTarget(iTarget.WithBuildDetails(fbInfo))
 	targets := buildTargets(manifest)
-	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, bs)
+	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, entryWithState(bs))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +298,7 @@ func TestDockerBuildWithNestedFastBuildDeploysSynclet(t *testing.T) {
 
 	manifest := NewSanchoDockerBuildManifestWithNestedFastBuild(f)
 	targets := buildTargets(manifest)
-	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, store.BuildStateSet{})
+	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, entryWithEmptyState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,7 +329,7 @@ func TestDockerBuildWithNestedFastBuildContainerUpdate(t *testing.T) {
 	bs := resultToStateSet(alreadyBuiltSet, []string{changed}, f.deployInfo())
 	manifest := NewSanchoDockerBuildManifestWithNestedFastBuild(f)
 	targets := buildTargets(manifest)
-	result, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, bs)
+	result, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, entryWithState(bs))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,7 +364,7 @@ func TestIncrementalBuildFailure(t *testing.T) {
 
 	manifest := NewSanchoFastBuildManifest(f)
 	targets := buildTargets(manifest)
-	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, bs)
+	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, entryWithState(bs))
 	msg := "Command failed with exit code: 1"
 	if err == nil || !strings.Contains(err.Error(), msg) {
 		t.Fatalf("Expected error message %q, actual: %v", msg, err)
@@ -397,7 +397,7 @@ func TestIncrementalBuildKilled(t *testing.T) {
 
 	manifest := NewSanchoFastBuildManifest(f)
 	targets := buildTargets(manifest)
-	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, bs)
+	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, entryWithState(bs))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -420,7 +420,7 @@ func TestFallBackToImageDeploy(t *testing.T) {
 
 	manifest := NewSanchoFastBuildManifest(f)
 	targets := buildTargets(manifest)
-	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, bs)
+	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, entryWithState(bs))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -441,7 +441,7 @@ func TestNoFallbackForDontFallBackError(t *testing.T) {
 
 	manifest := NewSanchoFastBuildManifest(f)
 	targets := buildTargets(manifest)
-	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, bs)
+	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, entryWithState(bs))
 	if err == nil {
 		t.Errorf("Expected this error to fail fallback tester and propogate back up")
 	}
@@ -465,7 +465,7 @@ func TestIncrementalBuildTwice(t *testing.T) {
 	bPath := f.WriteFile("b.txt", "b")
 
 	firstState := resultToStateSet(alreadyBuiltSet, []string{aPath}, f.deployInfo())
-	firstResult, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, firstState)
+	firstResult, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, entryWithState(firstState))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -477,7 +477,7 @@ func TestIncrementalBuildTwice(t *testing.T) {
 	}
 
 	secondState := resultToStateSet(firstResult, []string{bPath}, f.deployInfo())
-	secondResult, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, secondState)
+	secondResult, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, entryWithState(secondState))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -514,7 +514,7 @@ func TestIncrementalBuildTwiceDeadPod(t *testing.T) {
 	bPath := f.WriteFile("b.txt", "b")
 
 	firstState := resultToStateSet(alreadyBuiltSet, []string{aPath}, f.deployInfo())
-	firstResult, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, firstState)
+	firstResult, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, entryWithState(firstState))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -529,7 +529,7 @@ func TestIncrementalBuildTwiceDeadPod(t *testing.T) {
 	f.docker.ExecErrorToThrow = fmt.Errorf("Dead pod")
 
 	secondState := resultToStateSet(firstResult, []string{bPath}, f.deployInfo())
-	secondResult, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, secondState)
+	secondResult, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, entryWithState(secondState))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -592,7 +592,7 @@ func TestIgnoredFiles(t *testing.T) {
 	f.WriteFile(".git/index", "garbage")
 
 	targets := buildTargets(manifest)
-	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, store.BuildStateSet{})
+	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, entryWithEmptyState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -623,7 +623,7 @@ func TestCustomBuildWithFastBuild(t *testing.T) {
 	manifest := NewSanchoCustomBuildManifestWithFastBuild(f)
 	targets := buildTargets(manifest)
 
-	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, store.BuildStateSet{})
+	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, entryWithEmptyState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -650,7 +650,7 @@ func TestCustomBuildWithoutFastBuild(t *testing.T) {
 	manifest := NewSanchoCustomBuildManifest(f)
 	targets := buildTargets(manifest)
 
-	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, store.BuildStateSet{})
+	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, entryWithEmptyState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -678,7 +678,7 @@ func TestCustomBuildDeterministicTag(t *testing.T) {
 	manifest := NewSanchoCustomBuildManifestWithTag(f, "deterministic-tag")
 	targets := buildTargets(manifest)
 
-	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, store.BuildStateSet{})
+	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, entryWithEmptyState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -710,7 +710,7 @@ func TestContainerBuildMultiStage(t *testing.T) {
 	firstResult := store.NewImageBuildResult(iTargetID, container.MustParseNamedTagged("sancho-base:tilt-prebuilt"))
 	bs[iTargetID] = store.NewBuildState(firstResult, nil)
 
-	result, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, bs)
+	result, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, entryWithState(bs))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -736,7 +736,7 @@ func TestDockerComposeImageBuild(t *testing.T) {
 	manifest := NewSanchoFastBuildDCManifest(f)
 	targets := buildTargets(manifest)
 
-	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, store.BuildStateSet{})
+	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, entryWithEmptyState())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -758,7 +758,7 @@ func TestDockerComposeFastBuild(t *testing.T) {
 	changed := f.WriteFile("a.txt", "a")
 	bs := resultToStateSet(alreadyBuiltSet, []string{changed}, f.deployInfo())
 
-	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, bs)
+	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, entryWithState(bs))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -785,12 +785,18 @@ func TestReturnLastUnexpectedError(t *testing.T) {
 	manifest := NewSanchoFastBuildDCManifest(f)
 	targets := buildTargets(manifest)
 
-	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, store.BuildStateSet{})
+	_, err := f.bd.BuildAndDeploy(f.ctx, f.st, targets, entryWithEmptyState())
 	if assert.Error(t, err) {
 		assert.Contains(t, err.Error(), "no one expects the unexpected error")
 	}
 
 }
+
+func entryWithState(state store.BuildStateSet) buildEntry {
+	return buildEntry{buildStateSet: state}
+}
+
+func entryWithEmptyState() buildEntry { return buildEntry{} }
 
 // The API boundaries between BuildAndDeployer and the ImageBuilder aren't obvious and
 // are likely to change in the future. So we test them together, using

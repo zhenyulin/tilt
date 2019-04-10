@@ -147,10 +147,10 @@ func (b *fakeBuildAndDeployer) nextBuildResult(iTarget model.ImageTarget, deploy
 	return result
 }
 
-func (b *fakeBuildAndDeployer) BuildAndDeploy(ctx context.Context, st store.RStore, specs []model.TargetSpec, state store.BuildStateSet) (store.BuildResultSet, error) {
+func (b *fakeBuildAndDeployer) BuildAndDeploy(ctx context.Context, st store.RStore, specs []model.TargetSpec, entry buildEntry) (store.BuildResultSet, error) {
 	b.buildCount++
 
-	call := buildAndDeployCall{count: b.buildCount, specs: specs, state: state}
+	call := buildAndDeployCall{count: b.buildCount, specs: specs, state: entry.buildStateSet}
 	if call.dc().Empty() && call.k8s().Empty() {
 		b.t.Fatalf("Invalid call: %+v", call)
 	}

@@ -20,7 +20,7 @@ type BuildAndDeployer interface {
 	//
 	// BuildResult can be used to construct a set of BuildStates, which contain
 	// the last successful builds of each target and the files changed since that build.
-	BuildAndDeploy(ctx context.Context, st store.RStore, specs []model.TargetSpec, currentState store.BuildStateSet) (store.BuildResultSet, error)
+	BuildAndDeploy(ctx context.Context, st store.RStore, specs []model.TargetSpec, entry buildEntry) (store.BuildResultSet, error)
 }
 
 type BuildOrder []BuildAndDeployer
@@ -54,12 +54,12 @@ func NewCompositeBuildAndDeployer(builders BuildOrder) *CompositeBuildAndDeploye
 	return &CompositeBuildAndDeployer{builders: builders}
 }
 
-func (composite *CompositeBuildAndDeployer) BuildAndDeploy(ctx context.Context, st store.RStore, specs []model.TargetSpec, currentState store.BuildStateSet) (store.BuildResultSet, error) {
+func (composite *CompositeBuildAndDeployer) BuildAndDeploy(ctx context.Context, st store.RStore, specs []model.TargetSpec, entry buildEntry) (store.BuildResultSet, error) {
 	var lastErr, lastUnexpectedErr error
 	logger.Get(ctx).Debugf("Building with BuildOrder: %s", composite.builders.String())
 	for i, builder := range composite.builders {
 		logger.Get(ctx).Debugf("Trying to build and deploy with %T", builder)
-		br, err := builder.BuildAndDeploy(ctx, st, specs, currentState)
+		br, err := builder.BuildAndDeploy(ctx, st, specs, entry)
 		if err == nil {
 			return br, err
 		}

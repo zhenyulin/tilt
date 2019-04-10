@@ -217,7 +217,7 @@ func (c *BuildController) buildAndDeploy(ctx context.Context, st store.RStore, e
 			return store.BuildResultSet{}, err
 		}
 	}
-	return c.b.BuildAndDeploy(ctx, st, targets, entry.buildStateSet)
+	return c.b.BuildAndDeploy(ctx, st, targets, entry)
 }
 
 func (c *BuildController) logBuildEntry(ctx context.Context, entry buildEntry, changedFiles []string) {
