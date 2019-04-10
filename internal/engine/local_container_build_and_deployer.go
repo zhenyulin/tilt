@@ -63,8 +63,14 @@ func (cbd *LocalContainerBuildAndDeployer) BuildAndDeploy(ctx context.Context, s
 
 	state := entry.buildStateSet[iTarget.ID()]
 
-	// LocalContainerBuildAndDeployer doesn't support initial build
 	if state.IsEmpty() {
+		// either it's an inital build+deploy, or the state was cleared for some reason.
+		if entry.buildReason == model.BuildReasonFlagConfig {
+			return store.BuildResultSet{}, RedirectToNextBuilderInfof("config files changed, falling back to full build")
+		} else if entry.buildReason == model.BuildReasonFlagCrash {
+			return store.BuildResultSet{}, RedirectToNextBuilderInfof("container state may be invalid, falling back to full build")
+		}
+
 		return store.BuildResultSet{}, SilentRedirectToNextBuilderf("prev. build state is empty; container build does not support initial deploy")
 	}
 
