@@ -300,7 +300,7 @@ func TestRenderTiltLogHalfScreen(t *testing.T) {
 	rtf := newRendererTestFixture(t)
 
 	v := view.View{
-		Log:       strings.Repeat("abcdefg ", 30),
+		Log:       model.NewLog(strings.Repeat("abcdefg ", 30)),
 		Resources: nil,
 	}
 	vs := fakeViewState(0, view.CollapseNo)
@@ -337,7 +337,7 @@ func TestRenderLogModal(t *testing.T) {
 				ResourceInfo: view.K8SResourceInfo{
 					PodName:         "vigoda-pod",
 					PodCreationTime: now,
-					PodLog:          "serving on 8080",
+					PodLog:          model.NewLog("serving on 8080"),
 					PodStatus:       "Running",
 				},
 				LastDeployTime: now,
@@ -362,7 +362,7 @@ func TestRenderLogModal(t *testing.T) {
 					PodName:         "vigoda-pod",
 					PodCreationTime: now,
 				},
-				CrashLog: "panic!",
+				CrashLog: model.NewLog("panic!"),
 			},
 		},
 	}
@@ -376,7 +376,7 @@ func TestRenderLogModal(t *testing.T) {
 					"docker-compose.yml",
 					"building",
 					testCID,
-					"Hi hello I'm a docker compose log",
+					model.NewLog("Hi hello I'm a docker compose log"),
 					time.Now().Add(time.Second*-12),
 				),
 				BuildHistory: []model.BuildRecord{
@@ -495,7 +495,7 @@ func TestPodLogContainerUpdate(t *testing.T) {
 				ResourceInfo: view.K8SResourceInfo{
 					PodName:            "vigoda-pod",
 					PodStatus:          "Running",
-					PodLog:             "Serving on 8080",
+					PodLog:             model.NewLog("Serving on 8080"),
 					PodUpdateStartTime: ts,
 					PodCreationTime:    ts.Add(-time.Minute),
 				},
