@@ -10,6 +10,7 @@ class StatusItem {
   public up: boolean = false
   public hasError: boolean = false
   public name: string
+  public runtimeStatus: string
 
   /**
    * Create a pared down StatusItem from a ResourceView
@@ -20,13 +21,15 @@ class StatusItem {
 
     let status = combinedStatus(res)
     let runtimeStatus = res.RuntimeStatus
+    this.runtimeStatus = runtimeStatus
     this.up = status == "ok"
     this.hasError = status == "error"
   }
 }
 
 type StatusBarProps = {
-  items: Array<any>
+  items: Array<StatusItem>
+  currentlySelectedResource: string
 }
 
 class Statusbar extends PureComponent<StatusBarProps> {
@@ -78,6 +81,23 @@ class Statusbar extends PureComponent<StatusBarProps> {
     return upPanel
   }
 
+  currentResourcePanel() {
+    if (!this.props.currentlySelectedResource) {
+      return <span />
+    }
+
+    let currentStatusItem = this.props.items.find(
+      i => i.name === this.props.currentlySelectedResource
+    )
+    if (!currentStatusItem) {
+      return <span />
+    }
+
+    let statusText = currentStatusItem.up ? "running" : currentStatusItem.runtimeStatus
+    let message = `${currentStatusItem.name} status: ${statusText}`
+    return <span>{message}</span>
+  }
+
   render() {
     let errorCount = 0
     let warningCount = 0
@@ -103,6 +123,7 @@ class Statusbar extends PureComponent<StatusBarProps> {
       <div className="Statusbar">
         {errorPanel}
         {warningPanel}
+        {this.currentResourcePanel()}
         <div className="Statusbar-panel Statusbar-panel--spacer">&nbsp;</div>
         {upPanel}
       </div>

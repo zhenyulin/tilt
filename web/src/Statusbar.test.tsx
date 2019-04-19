@@ -7,7 +7,7 @@ import { oneResourceView, twoResourceView } from "./testdata.test"
 
 describe("StatusBar", () => {
   it("renders without crashing", () => {
-    const tree = renderer.create(<Statusbar items={[]} />).toJSON()
+    const tree = renderer.create(<Statusbar items={[]} currentlySelectedResource=""/>).toJSON()
 
     expect(tree).toMatchSnapshot()
   })
@@ -18,7 +18,7 @@ describe("StatusBar", () => {
       res.PendingBuildSince = ""
       return new StatusItem(res)
     })
-    let statusbar = mount(<Statusbar items={items} />)
+    let statusbar = mount(<Statusbar items={items} currentlySelectedResource="snack" />)
     expect(statusbar.find(".Statusbar-panel--error").html()).toContain(
       "2 Errors"
     )
@@ -30,7 +30,7 @@ describe("StatusBar", () => {
       res.PendingBuildSince = ""
       return new StatusItem(res)
     })
-    const tree = renderer.create(<Statusbar items={items} />).toJSON()
+    const tree = renderer.create(<Statusbar items={items} currentlySelectedResource="snack" />).toJSON()
 
     expect(tree).toMatchSnapshot()
   })
@@ -42,7 +42,7 @@ describe("StatusBar", () => {
     })
 
     let items = view.Resources.map((res: any) => new StatusItem(res))
-    const tree = renderer.create(<Statusbar items={items} />).toJSON()
+    const tree = renderer.create(<Statusbar items={items} currentlySelectedResource="snack" />).toJSON()
 
     expect(tree).toMatchSnapshot()
   })
@@ -53,7 +53,7 @@ describe("StatusBar", () => {
       res.BuildHistory[0].Error = ""
     })
     let items = view.Resources.map((res: any) => new StatusItem(res))
-    let statusbar = mount(<Statusbar items={items} />)
+    let statusbar = mount(<Statusbar items={items} currentlySelectedResource="snack" />)
     expect(statusbar.find(".Statusbar-panel--error").html()).toContain(
       "0 Errors"
     )

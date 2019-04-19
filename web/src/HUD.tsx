@@ -249,6 +249,12 @@ class HUD extends Component<HudProps, HudState> {
       return <PreviewPane endpoint={endpoint} isExpanded={isSidebarClosed} />
     }
 
+    let statusbarRoute = (props: RouteComponentProps<any>) => {
+      let name = props.match.params ? props.match.params.name : ""
+
+      return <Statusbar items={statusItems} currentlySelectedResource={name} />
+    }
+
     return (
       <Router history={this.history}>
         <div className="HUD">
@@ -269,7 +275,7 @@ class HUD extends Component<HudProps, HudState> {
             <Route path={this.path("/r/:name")} render={sidebarRoute} />
             <Route render={sidebarRoute} />
           </Switch>
-          <Statusbar items={statusItems} />
+          <Route path={this.path("/r/:name")} render={statusbarRoute} />
           <Switch>
             <Route
               exact
