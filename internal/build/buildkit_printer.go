@@ -6,6 +6,10 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/davecgh/go-spew/spew"
+
+	"github.com/windmilleng/tilt/tools/devlog"
+
 	digest "github.com/opencontainers/go-digest"
 
 	"github.com/windmilleng/tilt/internal/logger"
@@ -65,6 +69,7 @@ func newBuildkitPrinter(logger logger.Logger) *buildkitPrinter {
 }
 
 func (b *buildkitPrinter) parseAndPrint(vertexes []*vertex, logs []*vertexLog) error {
+	devlog.Logf("vertexes:\n\n%s\n\nlogs:\n\n%s\n\n", spew.Sdump(vertexes), spew.Sdump(logs))
 	for _, v := range vertexes {
 		if vl, ok := b.vData[v.digest]; ok {
 			vl.vertex.started = v.started
