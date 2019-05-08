@@ -8,6 +8,7 @@ import { combinedStatusMessage } from "./combinedStatusMessage"
 import { Build } from "./types"
 import mostRecentBuildToDisplay from "./mostRecentBuild"
 import { Link } from "react-router-dom"
+import { Progress } from "reactstrap"
 
 class StatusItem {
   public warningCount: number = 0
@@ -82,11 +83,19 @@ class Statusbar extends PureComponent<StatusBarProps> {
   }
 
   progressPanel(upCount: number, itemCount: number) {
+    // TODO progress bar goes here
     return (
       <section className="Statusbar-panel Statusbar-progressPanel">
         <p>
           <strong>{upCount}</strong>/{itemCount} running
         </p>
+        <Progress multi>
+          <Progress bar value="15" />
+          <Progress bar color="success" value="30" />
+          <Progress bar color="info" value="25" />
+          <Progress bar color="warning" value="20" />
+          <Progress bar color="danger" value="5" />
+        </Progress>
         <LogoSvg className="Statusbar-logo" />
       </section>
     )

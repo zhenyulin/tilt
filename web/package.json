@@ -15,6 +15,7 @@
     "@types/react-select": "^2.0.15",
     "@types/react-test-renderer": "^16.8.1",
     "@types/react-timeago": "^4.1.0",
+    "@types/reactstrap": "^8.0.1",
     "ansi-to-react": "^5.0.0",
     "enzyme": "^3.9.0",
     "enzyme-adapter-react-16": "^1.11.2",
@@ -29,6 +30,7 @@
     "react-select": "^2.4.2",
     "react-test-renderer": "^16.7.0",
     "react-timeago": "^4.4.0",
+    "reactstrap": "^8.0.0",
     "typescript": "^3.3.4000"
   },
   "scripts": {
