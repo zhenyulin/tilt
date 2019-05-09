@@ -524,6 +524,8 @@ type Pod struct {
 	// we need to ship log visibility into multiple containers. Here's the minimum
 	// of info we need for that.
 	ContainerInfos []ContainerInfo
+
+	AsOf time.Time
 }
 
 // The minimum info we need to retrieve logs for a container.

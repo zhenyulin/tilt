@@ -132,10 +132,12 @@ class ErrorPane extends Component<ErrorsProps, ErrorState> {
     }
 
     return (
-      <section className="ErrorPane">
-        <button onClick={this.clear.bind(this)}>Clear</button>
-        {el}
-      </section>
+      <div>
+        <button className="Clear" type="button" onClick={this.clear.bind(this)}>
+          Clear
+        </button>
+        <section className="ErrorPane">{el}</section>
+      </div>
     )
   }
 }
