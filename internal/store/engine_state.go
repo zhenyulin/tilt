@@ -515,8 +515,9 @@ type Pod struct {
 
 	// We want to show the user # of restarts since pod has been running current code,
 	// i.e. OldRestarts - Total Restarts
-	ContainerRestarts int
-	OldRestarts       int // # times the pod restarted when it was running old code
+	ContainerRestarts    int
+	OldRestarts          int // # times the pod restarted when it was running old code
+	LastContainerRestart time.Time
 
 	// HACK(maia): eventually we'll want our model of the world to handle pods with
 	// multiple containers (for logs, restart counts, port forwards, etc.). For now,
@@ -708,6 +709,7 @@ func resourceInfoView(mt *ManifestTarget) view.ResourceInfoView {
 			PodRestarts:        pod.ContainerRestarts - pod.OldRestarts,
 			PodLog:             pod.CurrentLog,
 			YAML:               mt.Manifest.K8sTarget().YAML,
+			PodLastRestart:     pod.LastContainerRestart,
 		}
 	}
 }

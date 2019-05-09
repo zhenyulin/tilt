@@ -631,6 +631,7 @@ func populateContainerStatus(ctx context.Context, manifest model.Manifest, podIn
 }
 
 func handlePodChangeAction(ctx context.Context, state *store.EngineState, pod *v1.Pod) {
+	// logger.Get(ctx).Infof("GOT POD CHANGE ACTION FOR POD %s", pod.Name)
 	mt, podInfo := ensureManifestTargetWithPod(state, pod)
 	if mt == nil || podInfo == nil {
 		return
@@ -675,10 +676,16 @@ func handlePodChangeAction(ctx context.Context, state *store.EngineState, pod *v
 
 	}
 
+	// logger.Get(ctx).Infof("GOT CONTAINER STATUS: %+v", cStatus)
+
 	if cStatus.Name == "" {
 		return
 	}
 
+	if cStatus.State.Terminated != nil && cStatus.State.Terminated.ExitCode > 0 {
+		logger.Get(ctx).Infof("DERP CONTAINER FOR POD %s w/ CID %s CRASHED AT %s", pod.Name, cStatus.ContainerID, cStatus.State.Terminated.FinishedAt.String())
+		podInfo.LastContainerRestart = cStatus.State.Terminated.FinishedAt.Time
+	}
 	populateContainerStatus(ctx, manifest, podInfo, pod, cStatus)
 	checkForPodCrash(ctx, state, ms, *podInfo)
 

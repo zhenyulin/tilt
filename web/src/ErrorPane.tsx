@@ -1,4 +1,4 @@
-import React, { PureComponent } from "react"
+import React, { Component } from "react"
 import { ReactComponent as LogoWordmarkSvg } from "./assets/svg/logo-wordmark-gray.svg"
 import AnsiLine from "./AnsiLine"
 import TimeAgo from "react-timeago"
@@ -20,6 +20,7 @@ class ErrorResource {
         podStatus: resource.ResourceInfo.PodStatus,
         podRestarts: resource.ResourceInfo.PodRestarts,
         podLog: resource.ResourceInfo.PodLog,
+        podLastRestartTime: resource.ResourceInfo.PodLastRestartTime,
       }
     } else {
       this.resourceInfo = {
@@ -27,6 +28,7 @@ class ErrorResource {
         podStatus: "",
         podRestarts: 0,
         podLog: "",
+        podLastRestartTime: zeroTime,
       }
     }
   }
@@ -37,13 +39,27 @@ type ResourceInfo = {
   podStatus: string
   podRestarts: number
   podLog: string
+  podLastRestartTime: string
 }
 
 type ErrorsProps = {
   resources: Array<ErrorResource>
 }
 
-class ErrorPane extends PureComponent<ErrorsProps> {
+type ErrorState = {
+  showSince: Date
+}
+
+class ErrorPane extends Component<ErrorsProps, ErrorState> {
+  constructor(props: ErrorsProps) {
+    super(props)
+    this.state = { showSince: new Date(zeroTime) }
+  }
+
+  clear() {
+    this.setState({ showSince: new Date(Date.now()) })
+  }
+
   render() {
     let el = (
       <section className="Pane-empty-message">
@@ -52,7 +68,9 @@ class ErrorPane extends PureComponent<ErrorsProps> {
       </section>
     )
     let errorElements: Array<JSX.Element> = []
-    this.props.resources.forEach(r => {
+    for (let r of this.props.resources) {
+      let lastRestartTime = new Date(r.resourceInfo.podLastRestartTime)
+
       if (
         r.resourceInfo.podStatus === "Error" ||
         r.resourceInfo.podStatus === "CrashLoopBackOff"
@@ -66,13 +84,17 @@ class ErrorPane extends PureComponent<ErrorsProps> {
             <section>{r.resourceInfo.podLog}</section>
           </li>
         )
-      } else if (r.resourceInfo.podRestarts > 0) {
+      } else if (
+        r.resourceInfo.podRestarts &&
+        lastRestartTime > this.state.showSince
+      ) {
+        console.log(lastRestartTime)
         errorElements.push(
           <li key={"resourceInfoPodCrash" + r.name} className="ErrorPane-item">
             <header>
               <p>{r.name}</p>
               <p>{`Restarts: ${r.resourceInfo.podRestarts}`}</p>
-              <p>{r.resourceInfo.podCreationTime}</p>
+              <p>{r.resourceInfo.podLastRestartTime}</p>
             </header>
             <section>
               <p>{`Last log line: ${r.resourceInfo.podLog}`}</p>
@@ -82,7 +104,10 @@ class ErrorPane extends PureComponent<ErrorsProps> {
       }
       if (r.buildHistory.length > 0) {
         let lastBuild = r.buildHistory[0]
-        if (lastBuild.Error !== null) {
+        if (
+          lastBuild.Error !== null &&
+          new Date(lastBuild.FinishTime) > this.state.showSince
+        ) {
           errorElements.push(
             <li key={"buildError" + r.name} className="ErrorPane-item">
               <header>
@@ -100,13 +125,18 @@ class ErrorPane extends PureComponent<ErrorsProps> {
           )
         }
       }
-    })
+    }
 
     if (errorElements.length > 0) {
       el = <ul>{errorElements}</ul>
     }
 
-    return <section className="ErrorPane">{el}</section>
+    return (
+      <section className="ErrorPane">
+        <button onClick={this.clear.bind(this)}>Clear</button>
+        {el}
+      </section>
+    )
   }
 }
 

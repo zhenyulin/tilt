@@ -41,6 +41,7 @@ type Resource = {
     PodRestarts: number
     PodUpdateStartTime: string
     YAML: string
+    PodLastRestartTime: string
   }
   RuntimeStatus: string
   ShowBuildStatus: boolean

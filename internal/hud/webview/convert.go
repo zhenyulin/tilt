@@ -63,6 +63,9 @@ func StateToWebView(s store.EngineState) View {
 		endpoints := store.ManifestTargetEndpoints(mt)
 
 		podID := ms.MostRecentPod().PodID
+		if name.String() == "dan-snack" {
+			// log.Printf("DERP container ID %s restart time: %s", ms.MostRecentPod().ContainerID, ms.MostRecentPod().LastContainerRestart.String())
+		}
 
 		// NOTE(nick): Right now, the UX is designed to show the output exactly one
 		// pod. A better UI might summarize the pods in other ways (e.g., show the
@@ -142,6 +145,7 @@ func resourceInfoView(mt *store.ManifestTarget) ResourceInfoView {
 			PodRestarts:        pod.ContainerRestarts - pod.OldRestarts,
 			PodLog:             pod.Log(),
 			YAML:               mt.Manifest.K8sTarget().YAML,
+			PodLastRestartTime: pod.LastContainerRestart,
 		}
 	}
 }
