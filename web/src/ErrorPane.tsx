@@ -11,23 +11,23 @@ class AlertResource {
   public name: string
   public buildHistory: Array<Build>
   public resourceInfo: ResourceInfo
+  public crashLog: string
 
   constructor(resource: any) {
     this.name = resource.Name
     this.buildHistory = resource.BuildHistory
+    this.crashLog = resource.CrashLog
     if (resource.ResourceInfo) {
       this.resourceInfo = {
         podCreationTime: resource.ResourceInfo.PodCreationTime,
         podStatus: resource.ResourceInfo.PodStatus,
         podRestarts: resource.ResourceInfo.PodRestarts,
-        podLog: resource.ResourceInfo.PodLog,
       }
     } else {
       this.resourceInfo = {
         podCreationTime: zeroTime,
         podStatus: "",
         podRestarts: 0,
-        podLog: "",
       }
     }
   }
@@ -68,7 +68,6 @@ type ResourceInfo = {
   podCreationTime: string
   podStatus: string
   podRestarts: number
-  podLog: string
 }
 
 type AlertsProps = {
@@ -98,7 +97,7 @@ class AlertPane extends PureComponent<AlertsProps> {
                 />
               </p>
             </header>
-            <section>{r.resourceInfo.podLog}</section>
+            <section>{r.crashLog}</section>
           </li>
         )
       } else if (r.podRestarted()) {
@@ -109,7 +108,7 @@ class AlertPane extends PureComponent<AlertsProps> {
               <p>{`Restarts: ${r.resourceInfo.podRestarts}`}</p>
             </header>
             <section>
-              <p>{`Last log line: ${r.resourceInfo.podLog}`}</p>
+              <p>{`Last log line: ${r.crashLog}`}</p>
             </section>
           </li>
         )
